@@ -1,0 +1,90 @@
+import csv
+import sqlite3
+from pathlib import Path
+
+
+class HistoryDatabase:
+    def __init__(self, db_path):
+        self.db_path = Path(db_path)
+        self._init_db()
+
+    def _connect(self):
+        return sqlite3.connect(self.db_path)
+
+    def _init_db(self):
+        with self._connect() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS predictions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    student_name TEXT NOT NULL,
+                    matric_no TEXT NOT NULL,
+                    sex TEXT NOT NULL,
+                    age INTEGER NOT NULL,
+                    study_time INTEGER NOT NULL,
+                    failures INTEGER NOT NULL,
+                    activities TEXT NOT NULL,
+                    absences INTEGER NOT NULL,
+                    g1 INTEGER NOT NULL,
+                    g2 INTEGER NOT NULL,
+                    prediction_result TEXT NOT NULL,
+                    confidence_score REAL NOT NULL,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+
+    def add_prediction(self, student, prediction, confidence):
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO predictions (
+                    student_name, matric_no, sex, age, study_time, failures,
+                    activities, absences, g1, g2, prediction_result, confidence_score
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    student.name,
+                    student.matric_no,
+                    student.sex,
+                    student.age,
+                    student.study_time,
+                    student.failures,
+                    student.activities,
+                    student.absences,
+                    student.g1,
+                    student.g2,
+                    prediction,
+                    confidence,
+                ),
+            )
+
+    def list_predictions(self):
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT id, timestamp, student_name, matric_no, g1, g2,
+                       prediction_result, confidence_score
+                FROM predictions
+                ORDER BY id DESC
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def export_csv(self, path):
+        rows = self.list_predictions()
+        fieldnames = [
+            "id",
+            "timestamp",
+            "student_name",
+            "matric_no",
+            "g1",
+            "g2",
+            "prediction_result",
+            "confidence_score",
+        ]
+        with Path(path).open("w", newline="", encoding="utf-8-sig") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
