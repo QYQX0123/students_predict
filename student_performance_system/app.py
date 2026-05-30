@@ -76,8 +76,8 @@ class StudentPerformanceApp(tk.Tk):
             "failures": tk.StringVar(value="0"),
             "activities": tk.StringVar(value="yes"),
             "absences": tk.StringVar(value="4"),
-            "g1": tk.StringVar(value="12"),
-            "g2": tk.StringVar(value="13"),
+            "g1": tk.StringVar(value="60"),
+            "g2": tk.StringVar(value="65"),
         }
 
         fields = [
@@ -89,8 +89,8 @@ class StudentPerformanceApp(tk.Tk):
             ("Failures", "failures", ["0", "1", "2", "3", "4"]),
             ("Activities", "activities", ["yes", "no"]),
             ("Absences", "absences", "entry"),
-            ("Previous Grade G1", "g1", "entry"),
-            ("Midterm Grade G2", "g2", "entry"),
+            ("Previous Grade G1 (0-100)", "g1", "entry"),
+            ("Midterm Grade G2 (0-100)", "g2", "entry"),
         ]
 
         for row, (label, key, control) in enumerate(fields, start=1):
@@ -131,7 +131,9 @@ class StudentPerformanceApp(tk.Tk):
         controls = ttk.Frame(self.history_tab)
         controls.pack(fill="x", pady=(0, 8))
         ttk.Button(controls, text="Refresh", command=self._refresh_history).pack(side="left")
-        ttk.Button(controls, text="Export CSV", command=self._export_history).pack(side="left", padx=8)
+        ttk.Button(controls, text="View Detail", command=self._view_history_detail).pack(side="left", padx=(8, 0))
+        ttk.Button(controls, text="Delete Selected", command=self._delete_selected_history).pack(side="left", padx=8)
+        ttk.Button(controls, text="Export CSV", command=self._export_history).pack(side="left")
 
         columns = ("id", "timestamp", "student_name", "matric_no", "g1", "g2", "prediction_result", "confidence_score")
         self.history_tree = ttk.Treeview(self.history_tab, columns=columns, show="headings", height=16)
@@ -141,6 +143,7 @@ class StudentPerformanceApp(tk.Tk):
         self.history_tree.column("timestamp", width=150)
         self.history_tree.column("student_name", width=140)
         self.history_tree.pack(fill="both", expand=True)
+        self.history_tree.bind("<Double-1>", lambda _event: self._view_history_detail())
 
     def _show_metrics(self):
         metrics = self.service.metrics
@@ -203,8 +206,8 @@ class StudentPerformanceApp(tk.Tk):
                     failures=int(float(row["failures"])),
                     activities=row["activities"],
                     absences=int(float(row["absences"])),
-                    g1=int(float(row["G1"])),
-                    g2=int(float(row["G2"])),
+                    g1=self._read_score_100(row, "G1"),
+                    g2=self._read_score_100(row, "G2"),
                 )
                 result = self.service.predict(student)
                 row["prediction_result"] = result["prediction"]
@@ -226,6 +229,13 @@ class StudentPerformanceApp(tk.Tk):
         for klass in ["Low", "Medium", "High"]:
             self.probability_text.insert("end", f"{klass:<8}: {probabilities.get(klass, 0.0):.2%}\n")
         self.probability_text.configure(state="disabled")
+
+    @staticmethod
+    def _read_score_100(row, key):
+        value = float(row[key])
+        if 0 <= value <= 20:
+            return int(round(value * 5))
+        return int(round(value))
 
     def _draw_feature_importance(self):
         self.feature_canvas.delete("all")
@@ -263,6 +273,112 @@ class StudentPerformanceApp(tk.Tk):
                 f"{row['confidence_score']:.2%}",
             )
             self.history_tree.insert("", "end", values=values)
+
+    def _delete_selected_history(self):
+        selected = self.history_tree.selection()
+        if not selected:
+            messagebox.showwarning("No Selection", "Please select a history record to delete.")
+            return
+
+        values = self.history_tree.item(selected[0], "values")
+        prediction_id = values[0]
+        confirm = messagebox.askyesno(
+            "Delete Record",
+            f"Delete prediction record ID {prediction_id}?",
+        )
+        if not confirm:
+            return
+
+        deleted = self.db.delete_prediction(prediction_id)
+        if deleted:
+            self._refresh_history()
+            messagebox.showinfo("Deleted", "History record deleted successfully.")
+        else:
+            messagebox.showerror("Delete Failed", "The selected record no longer exists.")
+
+    def _view_history_detail(self):
+        selected = self.history_tree.selection()
+        if not selected:
+            messagebox.showwarning("No Selection", "Please select a history record to view.")
+            return
+
+        values = self.history_tree.item(selected[0], "values")
+        row = self.db.get_prediction(values[0])
+        if not row:
+            messagebox.showerror("Record Not Found", "The selected history record no longer exists.")
+            self._refresh_history()
+            return
+
+        student = StudentInput(
+            name=row["student_name"],
+            matric_no=row["matric_no"],
+            sex=row["sex"],
+            age=row["age"],
+            study_time=row["study_time"],
+            failures=row["failures"],
+            activities=row["activities"],
+            absences=row["absences"],
+            g1=row["g1"],
+            g2=row["g2"],
+        )
+        explanation = self.service.local_feature_importances(student)
+        self._show_detail_window(row, explanation)
+
+    def _show_detail_window(self, row, explanation):
+        window = tk.Toplevel(self)
+        window.title(f"Prediction Detail - {row['student_name']}")
+        window.geometry("720x620")
+        window.minsize(640, 520)
+
+        body = ttk.Frame(window, padding=16)
+        body.pack(fill="both", expand=True)
+
+        ttk.Label(body, text="Prediction Detail", font=("Segoe UI", 15, "bold")).pack(anchor="w")
+        probabilities = explanation["probabilities"]
+        summary = (
+            f"Student: {row['student_name']} ({row['matric_no']})\n"
+            f"Saved: {row['timestamp']}\n"
+            f"Prediction: {row['prediction_result']} | Saved confidence: {row['confidence_score']:.2%}\n"
+            f"Current model confidence: {explanation['confidence']:.2%}\n"
+            f"Class probabilities: Low {probabilities.get('Low', 0.0):.2%}, "
+            f"Medium {probabilities.get('Medium', 0.0):.2%}, High {probabilities.get('High', 0.0):.2%}"
+        )
+        ttk.Label(body, text=summary, justify="left").pack(anchor="w", pady=(8, 12))
+
+        columns = ("feature", "current", "reference", "impact", "direction")
+        tree = ttk.Treeview(body, columns=columns, show="headings", height=10)
+        headings = {
+            "feature": "Feature",
+            "current": "Student Value",
+            "reference": "Typical Value",
+            "impact": "Impact",
+            "direction": "Effect",
+        }
+        widths = {"feature": 170, "current": 110, "reference": 110, "impact": 100, "direction": 130}
+        for col in columns:
+            tree.heading(col, text=headings[col])
+            tree.column(col, width=widths[col], anchor="center")
+        tree.column("feature", anchor="w")
+        tree.pack(fill="both", expand=True)
+
+        for item in explanation["items"]:
+            tree.insert(
+                "",
+                "end",
+                values=(
+                    item["feature"],
+                    item["current_value"],
+                    item["reference_value"],
+                    f"{item['impact']:+.2%}",
+                    "Supports prediction" if item["direction"] == "supports" else "Reduces prediction",
+                ),
+            )
+
+        note = (
+            "Impact means the change in predicted-class probability when that single feature is replaced "
+            "with a typical training-set value. Larger absolute values have stronger influence for this student."
+        )
+        ttk.Label(body, text=note, wraplength=660, justify="left").pack(anchor="w", pady=(12, 0))
 
     def _export_history(self):
         path = filedialog.asksaveasfilename(

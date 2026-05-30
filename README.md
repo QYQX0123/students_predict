@@ -9,6 +9,7 @@ Desktop application for predicting student final performance categories using a 
 - Predicts `Low`, `Medium`, or `High` final performance
 - Shows prediction confidence and class probabilities
 - Displays feature importance in the GUI
+- Shows per-student feature influence from History > View Detail
 - Saves prediction history to SQLite
 - Exports history and batch prediction results to CSV
 
@@ -34,8 +35,10 @@ python run_app.py
 
 The system predicts the final performance category from available stage-based student data:
 
-- `Low`: final grade below 10
-- `Medium`: final grade from 10 to 14
-- `High`: final grade 15 or above
+- `Low`: final grade below 50
+- `Medium`: final grade from 50 to 74
+- `High`: final grade 75 or above
+
+The GUI accepts `G1` and `G2` as 0-100 scores. Internally, the system converts them to the dataset's original 0-20 scale before prediction.
 
 The strongest expected predictors are usually `G1` and `G2`, because they represent previous and midterm academic performance.

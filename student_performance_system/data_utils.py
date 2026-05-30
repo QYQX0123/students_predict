@@ -52,8 +52,8 @@ class StudentInput:
             "failures": self.failures,
             "activities": self.activities,
             "absences": self.absences,
-            "G1": self.g1,
-            "G2": self.g2,
+            "G1": score_100_to_20(self.g1),
+            "G2": score_100_to_20(self.g2),
         }
 
 
@@ -64,6 +64,10 @@ def performance_category(score):
     if score < 15:
         return "Medium"
     return "High"
+
+
+def score_100_to_20(score):
+    return round(float(score) / 5, 2)
 
 
 def load_dataset(path):
@@ -126,6 +130,6 @@ def validate_student_input(values):
         failures=int_in_range("failures", "Failures", 0, 4),
         activities=activities,
         absences=int_in_range("absences", "Absences", 0, 100),
-        g1=int_in_range("g1", "Previous grade G1", 0, 20),
-        g2=int_in_range("g2", "Midterm grade G2", 0, 20),
+        g1=int_in_range("g1", "Previous grade G1", 0, 100),
+        g2=int_in_range("g2", "Midterm grade G2", 0, 100),
     )

@@ -67,10 +67,52 @@ class HistoryDatabase:
                 SELECT id, timestamp, student_name, matric_no, g1, g2,
                        prediction_result, confidence_score
                 FROM predictions
-                ORDER BY id DESC
+                ORDER BY id ASC
                 """
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def get_prediction(self, prediction_id):
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                """
+                SELECT id, timestamp, student_name, matric_no, sex, age,
+                       study_time, failures, activities, absences, g1, g2,
+                       prediction_result, confidence_score
+                FROM predictions
+                WHERE id = ?
+                """,
+                (prediction_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def delete_prediction(self, prediction_id):
+        with self._connect() as conn:
+            cursor = conn.execute("DELETE FROM predictions WHERE id = ?", (prediction_id,))
+            if cursor.rowcount:
+                self._renumber_prediction_ids(conn)
+            return cursor.rowcount
+
+    def _renumber_prediction_ids(self, conn):
+        rows = conn.execute("SELECT id FROM predictions ORDER BY id ASC").fetchall()
+
+        # Use temporary negative ids first so updates never collide with existing primary keys.
+        for new_id, (old_id,) in enumerate(rows, start=1):
+            if old_id != new_id:
+                conn.execute("UPDATE predictions SET id = ? WHERE id = ?", (-new_id, old_id))
+
+        for new_id, _ in enumerate(rows, start=1):
+            conn.execute("UPDATE predictions SET id = ? WHERE id = ?", (new_id, -new_id))
+
+        max_id = len(rows)
+        try:
+            if max_id:
+                conn.execute("UPDATE sqlite_sequence SET seq = ? WHERE name = ?", (max_id, "predictions"))
+            else:
+                conn.execute("DELETE FROM sqlite_sequence WHERE name = ?", ("predictions",))
+        except sqlite3.OperationalError:
+            pass
 
     def export_csv(self, path):
         rows = self.list_predictions()

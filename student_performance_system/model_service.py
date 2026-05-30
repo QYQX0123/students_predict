@@ -10,6 +10,7 @@ class PredictionService:
         self.dataset_path = dataset_path
         self.model = None
         self.metrics = {}
+        self.reference_row = {}
         self.train()
 
     def train(self):
@@ -30,6 +31,7 @@ class PredictionService:
 
         self.model = RandomForestClassifier(n_estimators=100, max_depth=7, random_state=42)
         self.model.fit(x_train, y_train)
+        self.reference_row = self._build_reference_row(x_train)
 
         predictions = [self.model.predict_one(row) for row in x_test]
         accuracy = sum(1 for p, t in zip(predictions, y_test) if p == t) / len(y_test)
@@ -60,6 +62,39 @@ class PredictionService:
             items.append((DISPLAY_FEATURES[feature], self.model.feature_importances_.get(encoded_feature, 0.0)))
         return sorted(items, key=lambda item: item[1], reverse=True)
 
+    def local_feature_importances(self, student_input):
+        feature_row = student_input.to_feature_row()
+        encoded_row = self._encode_row(feature_row)
+        prediction = self.model.predict_one(encoded_row)
+        probabilities = self.model.predict_proba_one(encoded_row)
+        baseline_probability = probabilities.get(prediction, 0.0)
+
+        items = []
+        for feature in FEATURES:
+            encoded_feature = self._encoded_feature_name(feature)
+            changed_row = dict(encoded_row)
+            changed_row[encoded_feature] = self.reference_row.get(encoded_feature, encoded_row[encoded_feature])
+            changed_probabilities = self.model.predict_proba_one(changed_row)
+            changed_probability = changed_probabilities.get(prediction, 0.0)
+            impact = baseline_probability - changed_probability
+            items.append(
+                {
+                    "feature": DISPLAY_FEATURES[feature],
+                    "current_value": feature_row[feature],
+                    "reference_value": self._display_reference_value(feature),
+                    "impact": impact,
+                    "direction": "supports" if impact >= 0 else "reduces",
+                }
+            )
+
+        items.sort(key=lambda item: abs(item["impact"]), reverse=True)
+        return {
+            "prediction": prediction,
+            "confidence": baseline_probability,
+            "probabilities": probabilities,
+            "items": items,
+        }
+
     def _encode_row(self, row):
         encoded = {}
         for feature in FEATURES:
@@ -71,6 +106,29 @@ class PredictionService:
             else:
                 encoded[self._encoded_feature_name(feature)] = float(value)
         return encoded
+
+    def _build_reference_row(self, rows):
+        reference = {}
+        for feature in self.model.features:
+            values = [row[feature] for row in rows]
+            if feature in {"sex_M", "activities_yes"}:
+                reference[feature] = Counter(values).most_common(1)[0][0]
+            else:
+                reference[feature] = sum(values) / len(values)
+        return reference
+
+    def _display_reference_value(self, feature):
+        encoded_feature = self._encoded_feature_name(feature)
+        value = self.reference_row.get(encoded_feature, 0.0)
+        if feature == "sex":
+            return "M" if value >= 0.5 else "F"
+        if feature == "activities":
+            return "yes" if value >= 0.5 else "no"
+        if feature in {"G1", "G2"}:
+            return round(value * 5, 1)
+        if feature == "age":
+            return round(value, 1)
+        return round(value, 2)
 
     @staticmethod
     def _encoded_feature_name(feature):
