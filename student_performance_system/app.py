@@ -57,7 +57,7 @@ class StudentPerformanceApp(tk.Tk):
     def _configure_style(self):
         style = ttk.Style(self)
         style.theme_use("clam")
-        default_font = ("Segoe UI", 10)
+        default_font = ("Times New Roman", 10)
         style.configure(".", font=default_font, foreground=COLORS["text"])
         style.configure("TFrame", background=COLORS["bg"])
         style.configure("Surface.TFrame", background=COLORS["surface"])
@@ -65,12 +65,20 @@ class StudentPerformanceApp(tk.Tk):
         style.configure("Toolbar.TFrame", background=COLORS["surface"])
         style.configure("TLabel", background=COLORS["bg"], foreground=COLORS["text"], font=default_font)
         style.configure("Surface.TLabel", background=COLORS["surface"], foreground=COLORS["text"], font=default_font)
-        style.configure("Muted.TLabel", background=COLORS["surface"], foreground=COLORS["muted"], font=("Segoe UI", 9))
-        style.configure("Title.TLabel", background=COLORS["bg"], foreground=COLORS["text"], font=("Segoe UI", 22, "bold"))
-        style.configure("Subtitle.TLabel", background=COLORS["bg"], foreground=COLORS["muted"], font=("Segoe UI", 10))
-        style.configure("Section.TLabel", background=COLORS["surface"], foreground=COLORS["text"], font=("Segoe UI", 13, "bold"))
-        style.configure("Result.TLabel", background=COLORS["surface"], foreground=COLORS["text"], font=("Segoe UI", 20, "bold"))
-        style.configure("TButton", font=("Segoe UI", 10, "bold"), padding=(12, 8), borderwidth=0)
+        style.configure("Muted.TLabel", background=COLORS["surface"], foreground=COLORS["muted"], font=("Times New Roman", 9))
+        style.configure("Title.TLabel", background=COLORS["bg"], foreground=COLORS["text"], font=("Times New Roman", 22, "bold"))
+        style.configure("Subtitle.TLabel", background=COLORS["bg"], foreground=COLORS["muted"], font=("Times New Roman", 10))
+        style.configure("HomeTitle.TLabel", background=COLORS["bg"], foreground=COLORS["text"], font=("Times New Roman", 30, "bold"))
+        style.configure("HomeIntro.TLabel", background=COLORS["bg"], foreground=COLORS["muted"], font=("Times New Roman", 12))
+        style.configure("HomeAction.TButton", font=("Times New Roman", 12, "bold"), padding=(24, 12), background=COLORS["primary"], foreground="#ffffff")
+        style.map(
+            "HomeAction.TButton",
+            background=[("active", COLORS["primary_hover"]), ("pressed", COLORS["primary_hover"])],
+            foreground=[("disabled", "#dbeafe"), ("!disabled", "#ffffff")],
+        )
+        style.configure("Section.TLabel", background=COLORS["surface"], foreground=COLORS["text"], font=("Times New Roman", 13, "bold"))
+        style.configure("Result.TLabel", background=COLORS["surface"], foreground=COLORS["text"], font=("Times New Roman", 20, "bold"))
+        style.configure("TButton", font=("Times New Roman", 10, "bold"), padding=(12, 8), borderwidth=0)
         style.configure("Accent.TButton", background=COLORS["primary"], foreground="#ffffff")
         style.map(
             "Accent.TButton",
@@ -80,7 +88,7 @@ class StudentPerformanceApp(tk.Tk):
         style.configure("TEntry", padding=(8, 5), relief="solid", bordercolor=COLORS["border"], lightcolor=COLORS["border"])
         style.configure("TCombobox", padding=(8, 5), relief="solid")
         style.configure("TNotebook", background=COLORS["bg"], borderwidth=0)
-        style.configure("TNotebook.Tab", padding=(14, 8), font=("Segoe UI", 10, "bold"))
+        style.configure("TNotebook.Tab", padding=(14, 8), font=("Times New Roman", 10, "bold"))
         style.map("TNotebook.Tab", background=[("selected", COLORS["surface"])], foreground=[("selected", COLORS["primary"])])
         style.configure(
             "Treeview",
@@ -91,23 +99,88 @@ class StudentPerformanceApp(tk.Tk):
             bordercolor=COLORS["border"],
             borderwidth=1,
         )
-        style.configure("Treeview.Heading", background=COLORS["surface_alt"], foreground=COLORS["muted"], font=("Segoe UI", 9, "bold"))
+        style.configure("Treeview.Heading", background=COLORS["surface_alt"], foreground=COLORS["muted"], font=("Times New Roman", 9, "bold"))
         style.map("Treeview", background=[("selected", "#dbeafe")], foreground=[("selected", COLORS["text"])])
         style.configure("Horizontal.TProgressbar", troughcolor=COLORS["bar_track"], background=COLORS["primary"], bordercolor=COLORS["bar_track"])
 
     def _build_layout(self):
-        root = ttk.Frame(self, padding=(22, 18))
-        root.pack(fill="both", expand=True)
+        self.root_frame = ttk.Frame(self, padding=(22, 18))
+        self.root_frame.pack(fill="both", expand=True)
+
+        self.home_frame = ttk.Frame(self.root_frame)
+        self.workspace_frame = ttk.Frame(self.root_frame)
+
+        self._build_home_screen(self.home_frame)
+        self._build_workspace(self.workspace_frame)
+        self._show_home()
+
+    def _build_home_screen(self, parent):
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(0, weight=1)
+        parent.rowconfigure(2, weight=1)
+
+        content = ttk.Frame(parent)
+        content.grid(row=1, column=0, sticky="nsew")
+        content.columnconfigure(0, weight=1)
+
+        ttk.Label(
+            content,
+            text="Student Performance Prediction System",
+            style="HomeTitle.TLabel",
+            anchor="center",
+        ).grid(row=0, column=0, sticky="ew", pady=(0, 14))
+
+        intro = (
+            "This system uses student learning records and previous grades to predict final "
+            "performance categories, helping teachers quickly review academic trends and "
+            "prediction history."
+        )
+        ttk.Label(
+            content,
+            text=intro,
+            style="HomeIntro.TLabel",
+            anchor="center",
+            justify="center",
+            wraplength=720,
+        ).grid(row=1, column=0, pady=(0, 34))
+
+        actions = ttk.Frame(content)
+        actions.grid(row=2, column=0)
+        ttk.Button(
+            actions,
+            text="Predict",
+            style="HomeAction.TButton",
+            command=self._show_prediction_screen,
+        ).pack(side="left", ipadx=18, padx=(0, 10))
+        ttk.Button(
+            actions,
+            text="Feature Importance",
+            style="HomeAction.TButton",
+            command=self._show_feature_importance_screen,
+        ).pack(side="left", ipadx=18, padx=10)
+        ttk.Button(
+            actions,
+            text="History",
+            style="HomeAction.TButton",
+            command=self._show_history_screen,
+        ).pack(side="left", ipadx=18, padx=(10, 0))
+
+    def _build_workspace(self, root):
+        root.columnconfigure(0, weight=1)
+        root.rowconfigure(1, weight=1)
 
         header = ttk.Frame(root)
-        header.pack(fill="x", pady=(0, 16))
-        ttk.Label(header, text="Student Performance Prediction System", style="Title.TLabel").pack(anchor="w")
-        ttk.Label(header, text="Random Forest prediction workspace for academic performance review", style="Subtitle.TLabel").pack(anchor="w", pady=(3, 0))
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 16))
+        ttk.Button(header, text="Home", command=self._show_home).pack(side="right", padx=(14, 0))
+        self.workspace_title = ttk.Label(header, text="Student Performance Prediction System", style="Title.TLabel")
+        self.workspace_title.pack(anchor="w")
+        self.workspace_subtitle = ttk.Label(header, text="Random Forest prediction workspace for academic performance review", style="Subtitle.TLabel")
+        self.workspace_subtitle.pack(anchor="w", pady=(3, 0))
         self.metrics_label = ttk.Label(header, text="", style="Subtitle.TLabel")
         self.metrics_label.pack(anchor="w", pady=(6, 0))
 
         body = ttk.Frame(root)
-        body.pack(fill="both", expand=True)
+        body.grid(row=1, column=0, sticky="nsew")
         body.columnconfigure(0, weight=0)
         body.columnconfigure(1, weight=1)
         body.rowconfigure(0, weight=1)
@@ -116,11 +189,11 @@ class StudentPerformanceApp(tk.Tk):
         self._build_tabs(body)
 
     def _build_input_panel(self, parent):
-        panel = ttk.Frame(parent, style="Panel.TFrame", padding=18)
-        panel.grid(row=0, column=0, sticky="ns", padx=(0, 16))
-        panel.columnconfigure(1, weight=1)
+        self.input_panel = ttk.Frame(parent, style="Panel.TFrame", padding=18)
+        self.input_panel.grid(row=0, column=0, sticky="ns", padx=(0, 16))
+        self.input_panel.columnconfigure(1, weight=1)
 
-        ttk.Label(panel, text="Student Input", style="Section.TLabel").grid(
+        ttk.Label(self.input_panel, text="Student Input", style="Section.TLabel").grid(
             row=0, column=0, columnspan=2, sticky="w", pady=(0, 10)
         )
 
@@ -151,29 +224,27 @@ class StudentPerformanceApp(tk.Tk):
         ]
 
         for row, (label, key, control) in enumerate(fields, start=1):
-            ttk.Label(panel, text=label, style="Surface.TLabel").grid(row=row, column=0, sticky="w", pady=5)
+            ttk.Label(self.input_panel, text=label, style="Surface.TLabel").grid(row=row, column=0, sticky="w", pady=5)
             if isinstance(control, list):
-                widget = ttk.Combobox(panel, textvariable=self.vars[key], values=control, state="readonly", width=19)
+                widget = ttk.Combobox(self.input_panel, textvariable=self.vars[key], values=control, state="readonly", width=19)
             else:
-                widget = ttk.Entry(panel, textvariable=self.vars[key], width=22)
+                widget = ttk.Entry(self.input_panel, textvariable=self.vars[key], width=22)
             widget.grid(row=row, column=1, sticky="ew", pady=5, padx=(12, 0))
 
         button_row = len(fields) + 1
-        ttk.Button(panel, text="Predict", style="Accent.TButton", command=self._predict).grid(row=button_row, column=0, columnspan=2, sticky="ew", pady=(16, 5))
-        ttk.Button(panel, text="Save Record", command=self._save_record).grid(row=button_row + 1, column=0, columnspan=2, sticky="ew", pady=5)
-        ttk.Button(panel, text="Batch CSV Predict", command=self._batch_predict).grid(row=button_row + 2, column=0, columnspan=2, sticky="ew", pady=5)
+        ttk.Button(self.input_panel, text="Predict", style="Accent.TButton", command=self._predict).grid(row=button_row, column=0, columnspan=2, sticky="ew", pady=(16, 5))
+        ttk.Button(self.input_panel, text="Save Record", command=self._save_record).grid(row=button_row + 1, column=0, columnspan=2, sticky="ew", pady=5)
+        ttk.Button(self.input_panel, text="Batch CSV Predict", command=self._batch_predict).grid(row=button_row + 2, column=0, columnspan=2, sticky="ew", pady=5)
 
     def _build_tabs(self, parent):
-        notebook = ttk.Notebook(parent)
-        notebook.grid(row=0, column=1, sticky="nsew")
+        self.notebook = ttk.Notebook(parent)
+        self.notebook.grid(row=0, column=1, sticky="nsew")
 
-        self.result_tab = ttk.Frame(notebook, style="Surface.TFrame", padding=18)
-        self.feature_tab = ttk.Frame(notebook, style="Surface.TFrame", padding=18)
-        self.history_tab = ttk.Frame(notebook, style="Surface.TFrame", padding=18)
+        self.result_tab = ttk.Frame(self.notebook, style="Surface.TFrame", padding=18)
+        self.history_tab = ttk.Frame(self.notebook, style="Surface.TFrame", padding=18)
 
-        notebook.add(self.result_tab, text="Prediction")
-        notebook.add(self.feature_tab, text="Feature Importance")
-        notebook.add(self.history_tab, text="History")
+        self.notebook.add(self.result_tab, text="Prediction")
+        self.notebook.add(self.history_tab, text="History")
 
         self.result_text = ttk.Label(self.result_tab, text="Ready for prediction", style="Result.TLabel")
         self.result_text.pack(anchor="w", pady=(0, 12))
@@ -198,8 +269,12 @@ class StudentPerformanceApp(tk.Tk):
             value.pack(side="right")
             self.probability_bars[klass] = (bar, value)
 
-        self.feature_canvas = tk.Canvas(self.feature_tab, bg=COLORS["surface"], height=440, highlightthickness=1, highlightbackground=COLORS["border"])
+        self.feature_frame = ttk.Frame(parent, style="Surface.TFrame", padding=18)
+        self.feature_frame.grid(row=0, column=1, sticky="nsew")
+        self.feature_frame.grid_remove()
+        self.feature_canvas = tk.Canvas(self.feature_frame, bg=COLORS["surface"], height=440, highlightthickness=1, highlightbackground=COLORS["border"])
         self.feature_canvas.pack(fill="both", expand=True)
+        self.feature_canvas.bind("<Configure>", lambda _event: self._draw_feature_importance())
 
         controls = ttk.Frame(self.history_tab, style="Toolbar.TFrame")
         controls.pack(fill="x", pady=(0, 8))
@@ -219,6 +294,58 @@ class StudentPerformanceApp(tk.Tk):
         self.history_tree.tag_configure("odd", background=COLORS["surface"])
         self.history_tree.tag_configure("even", background=COLORS["surface_alt"])
         self.history_tree.bind("<Double-1>", lambda _event: self._view_history_detail())
+
+    def _show_home(self):
+        self.workspace_frame.pack_forget()
+        self.home_frame.pack(fill="both", expand=True)
+
+    def _show_prediction_screen(self):
+        self.home_frame.pack_forget()
+        self.workspace_frame.pack(fill="both", expand=True)
+        self._set_workspace_header(
+            "Student Performance Prediction System",
+            "Random Forest prediction workspace for academic performance review",
+            show_metrics=True,
+        )
+        self.feature_frame.grid_remove()
+        self.input_panel.grid(row=0, column=0, sticky="ns", padx=(0, 16))
+        self.notebook.grid(row=0, column=1, sticky="nsew")
+        self.notebook.select(self.result_tab)
+
+    def _show_feature_importance_screen(self):
+        self.home_frame.pack_forget()
+        self.workspace_frame.pack(fill="both", expand=True)
+        self._set_workspace_header(
+            "Feature Importance",
+            "This chart shows which student attributes contribute most strongly to the trained Random Forest model.",
+            show_metrics=False,
+        )
+        self.input_panel.grid_remove()
+        self.notebook.grid_remove()
+        self.feature_frame.grid(row=0, column=0, columnspan=2, sticky="nsew")
+        self._draw_feature_importance()
+
+    def _show_history_screen(self):
+        self._refresh_history()
+        self.home_frame.pack_forget()
+        self.workspace_frame.pack(fill="both", expand=True)
+        self._set_workspace_header(
+            "Student Performance Prediction System",
+            "Random Forest prediction workspace for academic performance review",
+            show_metrics=True,
+        )
+        self.feature_frame.grid_remove()
+        self.input_panel.grid(row=0, column=0, sticky="ns", padx=(0, 16))
+        self.notebook.grid(row=0, column=1, sticky="nsew")
+        self.notebook.select(self.history_tab)
+
+    def _set_workspace_header(self, title, subtitle, show_metrics):
+        self.workspace_title.configure(text=title)
+        self.workspace_subtitle.configure(text=subtitle)
+        if show_metrics:
+            self.metrics_label.pack(anchor="w", pady=(6, 0))
+        else:
+            self.metrics_label.pack_forget()
 
     def _show_metrics(self):
         metrics = self.service.metrics
@@ -339,25 +466,29 @@ class StudentPerformanceApp(tk.Tk):
         return int(round(value))
 
     def _draw_feature_importance(self):
+        if not hasattr(self, "feature_canvas"):
+            return
         self.feature_canvas.delete("all")
         items = self.service.feature_importances()
-        width = 760
-        left = 210
+        canvas_width = max(self.feature_canvas.winfo_width(), 760)
+        chart_width = 760
+        chart_left = max((canvas_width - chart_width) // 2, 22)
+        left = chart_left + 210
         top = 30
         bar_height = 24
         gap = 16
 
-        self.feature_canvas.create_text(22, 16, text="Random Forest Feature Importance", anchor="nw", fill=COLORS["text"], font=("Segoe UI", 14, "bold"))
-        self.feature_canvas.create_text(22, 42, text="Higher bars indicate stronger influence in the trained model.", anchor="nw", fill=COLORS["muted"], font=("Segoe UI", 9))
+        self.feature_canvas.create_text(chart_left, 16, text="Random Forest Feature Importance", anchor="nw", fill=COLORS["text"], font=("Times New Roman", 14, "bold"))
+        self.feature_canvas.create_text(chart_left, 42, text="Higher bars indicate stronger influence in the trained model.", anchor="nw", fill=COLORS["muted"], font=("Times New Roman", 9))
         max_value = max((value for _, value in items), default=1) or 1
         for i, (label, value) in enumerate(items):
             y = top + 52 + i * (bar_height + gap)
             bar_width = int((value / max_value) * 430)
-            self.feature_canvas.create_text(left - 14, y + bar_height / 2, text=label, anchor="e", fill=COLORS["text"], font=("Segoe UI", 10))
+            self.feature_canvas.create_text(left - 14, y + bar_height / 2, text=label, anchor="e", fill=COLORS["text"], font=("Times New Roman", 10))
             self._rounded_rect(self.feature_canvas, left, y, left + 430, y + bar_height, 7, fill=COLORS["bar_track"], outline="")
             self._rounded_rect(self.feature_canvas, left, y, left + bar_width, y + bar_height, 7, fill=COLORS["primary"], outline="")
-            self.feature_canvas.create_text(left + 446, y + bar_height / 2, text=f"{value:.1%}", anchor="w", fill=COLORS["muted"], font=("Segoe UI", 10, "bold"))
-        self.feature_canvas.configure(scrollregion=(0, 0, width, top + 58 + len(items) * (bar_height + gap)))
+            self.feature_canvas.create_text(left + 446, y + bar_height / 2, text=f"{value:.1%}", anchor="w", fill=COLORS["muted"], font=("Times New Roman", 10, "bold"))
+        self.feature_canvas.configure(scrollregion=(0, 0, canvas_width, top + 58 + len(items) * (bar_height + gap)))
 
     def _refresh_history(self):
         if not hasattr(self, "history_tree"):
@@ -437,7 +568,7 @@ class StudentPerformanceApp(tk.Tk):
         body = ttk.Frame(window, padding=16)
         body.pack(fill="both", expand=True)
 
-        ttk.Label(body, text="Prediction Detail", font=("Segoe UI", 15, "bold")).pack(anchor="w")
+        ttk.Label(body, text="Prediction Detail", font=("Times New Roman", 15, "bold")).pack(anchor="w")
         probabilities = explanation["probabilities"]
         summary = (
             f"Student: {row['student_name']} ({row['matric_no']})\n"
