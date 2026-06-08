@@ -172,6 +172,7 @@ class StudentPerformanceApp(tk.Tk):
         header = ttk.Frame(root)
         header.grid(row=0, column=0, sticky="ew", pady=(0, 16))
         ttk.Button(header, text="Home", command=self._show_home).pack(side="right", padx=(14, 0))
+        ttk.Button(header, text="History", command=self._show_history_screen).pack(side="right")
         self.workspace_title = ttk.Label(header, text="Student Performance Prediction System", style="Title.TLabel")
         self.workspace_title.pack(anchor="w")
         self.workspace_subtitle = ttk.Label(header, text="Random Forest prediction workspace for academic performance review", style="Subtitle.TLabel")
@@ -241,10 +242,8 @@ class StudentPerformanceApp(tk.Tk):
         self.notebook.grid(row=0, column=1, sticky="nsew")
 
         self.result_tab = ttk.Frame(self.notebook, style="Surface.TFrame", padding=18)
-        self.history_tab = ttk.Frame(self.notebook, style="Surface.TFrame", padding=18)
 
         self.notebook.add(self.result_tab, text="Prediction")
-        self.notebook.add(self.history_tab, text="History")
 
         self.result_text = ttk.Label(self.result_tab, text="Ready for prediction", style="Result.TLabel")
         self.result_text.pack(anchor="w", pady=(0, 12))
@@ -276,7 +275,11 @@ class StudentPerformanceApp(tk.Tk):
         self.feature_canvas.pack(fill="both", expand=True)
         self.feature_canvas.bind("<Configure>", lambda _event: self._draw_feature_importance())
 
-        controls = ttk.Frame(self.history_tab, style="Toolbar.TFrame")
+        self.history_frame = ttk.Frame(parent, style="Surface.TFrame", padding=18)
+        self.history_frame.grid(row=0, column=0, columnspan=2, sticky="nsew")
+        self.history_frame.grid_remove()
+
+        controls = ttk.Frame(self.history_frame, style="Toolbar.TFrame")
         controls.pack(fill="x", pady=(0, 8))
         ttk.Button(controls, text="Refresh", command=self._refresh_history).pack(side="left")
         ttk.Button(controls, text="View Detail", command=self._view_history_detail).pack(side="left", padx=(8, 0))
@@ -284,7 +287,7 @@ class StudentPerformanceApp(tk.Tk):
         ttk.Button(controls, text="Export CSV", command=self._export_history).pack(side="left")
 
         columns = ("id", "timestamp", "student_name", "matric_no", "g1", "g2", "prediction_result", "confidence_score")
-        self.history_tree = ttk.Treeview(self.history_tab, columns=columns, show="headings", height=16)
+        self.history_tree = ttk.Treeview(self.history_frame, columns=columns, show="headings", height=16)
         for col in columns:
             self.history_tree.heading(col, text=col)
             self.history_tree.column(col, width=110, anchor="center")
@@ -307,6 +310,7 @@ class StudentPerformanceApp(tk.Tk):
             "Random Forest prediction workspace for academic performance review",
             show_metrics=True,
         )
+        self.history_frame.grid_remove()
         self.feature_frame.grid_remove()
         self.input_panel.grid(row=0, column=0, sticky="ns", padx=(0, 16))
         self.notebook.grid(row=0, column=1, sticky="nsew")
@@ -322,6 +326,7 @@ class StudentPerformanceApp(tk.Tk):
         )
         self.input_panel.grid_remove()
         self.notebook.grid_remove()
+        self.history_frame.grid_remove()
         self.feature_frame.grid(row=0, column=0, columnspan=2, sticky="nsew")
         self._draw_feature_importance()
 
@@ -330,14 +335,14 @@ class StudentPerformanceApp(tk.Tk):
         self.home_frame.pack_forget()
         self.workspace_frame.pack(fill="both", expand=True)
         self._set_workspace_header(
-            "Student Performance Prediction System",
-            "Random Forest prediction workspace for academic performance review",
-            show_metrics=True,
+            "History",
+            "Review saved prediction records, open record details, delete old entries, or export the history to CSV.",
+            show_metrics=False,
         )
+        self.input_panel.grid_remove()
+        self.notebook.grid_remove()
         self.feature_frame.grid_remove()
-        self.input_panel.grid(row=0, column=0, sticky="ns", padx=(0, 16))
-        self.notebook.grid(row=0, column=1, sticky="nsew")
-        self.notebook.select(self.history_tab)
+        self.history_frame.grid(row=0, column=0, columnspan=2, sticky="nsew")
 
     def _set_workspace_header(self, title, subtitle, show_metrics):
         self.workspace_title.configure(text=title)
