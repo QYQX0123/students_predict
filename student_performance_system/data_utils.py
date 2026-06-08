@@ -1,3 +1,5 @@
+"""Shared data definitions, CSV loading, and user-input validation."""
+
 import csv
 from dataclasses import dataclass
 from pathlib import Path
@@ -8,6 +10,7 @@ STUDY_TIME_COLUMN = (
     "3 - 10 to 20 hours, or 4 - >20 hours)"
 )
 
+# Model input columns as they appear in the source CSV file.
 FEATURES = [
     "sex",
     "age",
@@ -19,6 +22,7 @@ FEATURES = [
     "G2",
 ]
 
+# Friendly names used by the UI when displaying model explanations.
 DISPLAY_FEATURES = {
     "sex": "Gender",
     "age": "Age",
@@ -33,6 +37,8 @@ DISPLAY_FEATURES = {
 
 @dataclass
 class StudentInput:
+    """Normalized student information used by the UI, database, and model."""
+
     name: str
     matric_no: str
     sex: str
@@ -45,6 +51,7 @@ class StudentInput:
     g2: int
 
     def to_feature_row(self):
+        """Convert 0-100 UI grades into the dataset's 0-20 model scale."""
         return {
             "sex": self.sex,
             "age": self.age,
@@ -58,6 +65,7 @@ class StudentInput:
 
 
 def performance_category(score):
+    """Map the original final grade (G3, 0-20) to a prediction class."""
     score = float(score)
     if score < 10:
         return "Low"
@@ -67,10 +75,12 @@ def performance_category(score):
 
 
 def score_100_to_20(score):
+    """Convert a classroom-style 0-100 score into the dataset's 0-20 scale."""
     return round(float(score) / 5, 2)
 
 
 def load_dataset(path):
+    """Load the CSV dataset and split it into feature rows, labels, and raw rows."""
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"Dataset not found: {path}")
@@ -81,6 +91,7 @@ def load_dataset(path):
     if not rows:
         raise ValueError("Dataset is empty.")
 
+    # Fail early if the CSV schema is not compatible with the training pipeline.
     missing = [col for col in FEATURES + ["G3"] if col not in rows[0]]
     if missing:
         raise ValueError(f"Dataset is missing required columns: {', '.join(missing)}")
@@ -91,6 +102,7 @@ def load_dataset(path):
         item = {}
         for feature in FEATURES:
             value = row[feature]
+            # Categorical values stay as strings until PredictionService encodes them.
             if feature in {"sex", "activities"}:
                 item[feature] = value.strip()
             else:
@@ -102,6 +114,7 @@ def load_dataset(path):
 
 
 def validate_student_input(values):
+    """Validate raw Tkinter string values and return a typed StudentInput object."""
     name = values.get("name", "").strip()
     matric_no = values.get("matric_no", "").strip()
     sex = values.get("sex", "").strip()
@@ -113,6 +126,7 @@ def validate_student_input(values):
         raise ValueError("Activities must be yes or no.")
 
     def int_in_range(key, label, low, high):
+        """Parse one integer field and enforce its inclusive valid range."""
         try:
             value = int(values.get(key, ""))
         except ValueError as exc:

@@ -1,3 +1,5 @@
+"""Smoke test for model training, prediction explanation, and history storage."""
+
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -7,6 +9,7 @@ from student_performance_system.model_service import PredictionService
 
 
 def main():
+    """Run a lightweight end-to-end check without opening the Tkinter UI."""
     service = PredictionService(Path("dataset.csv"))
     student = validate_student_input(
         {
@@ -24,9 +27,11 @@ def main():
     )
     result = service.predict(student)
     local_importances = service.local_feature_importances(student)
+    # Local explanations should be non-empty and describe the same predicted class.
     assert local_importances["items"]
     assert local_importances["prediction"] == result["prediction"]
     with TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        # Use a disposable database so the test never changes the user's real history.
         db = HistoryDatabase(Path(tmp) / "history.db")
         db.add_prediction(student, result["prediction"], result["confidence"])
         db.add_prediction(student, result["prediction"], result["confidence"])

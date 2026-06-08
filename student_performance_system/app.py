@@ -1,3 +1,5 @@
+"""Tkinter desktop interface for the student performance prediction system."""
+
 import csv
 from pathlib import Path
 import tkinter as tk
@@ -12,6 +14,7 @@ APP_DIR = Path(__file__).resolve().parent.parent
 DATASET_PATH = APP_DIR / "dataset.csv"
 DB_PATH = APP_DIR / "student_predictions.db"
 
+# Centralized palette keeps the Tkinter screens visually consistent.
 COLORS = {
     "bg": "#eef3f8",
     "surface": "#ffffff",
@@ -27,6 +30,7 @@ COLORS = {
     "bar_track": "#e8eef7",
 }
 
+# Prediction labels are reused by the model and by the confidence bars.
 PREDICTION_COLORS = {
     "Low": COLORS["danger"],
     "Medium": COLORS["warning"],
@@ -35,7 +39,10 @@ PREDICTION_COLORS = {
 
 
 class StudentPerformanceApp(tk.Tk):
+    """Main Tkinter application window and all UI event handlers."""
+
     def __init__(self):
+        """Initialize services, build screens, and show default model statistics."""
         super().__init__()
         self.title("Student Performance Prediction System")
         self.geometry("1120x720")
@@ -55,6 +62,7 @@ class StudentPerformanceApp(tk.Tk):
         self._show_metrics()
 
     def _configure_style(self):
+        """Configure ttk styles used across the home, prediction, and history screens."""
         style = ttk.Style(self)
         style.theme_use("clam")
         default_font = ("Times New Roman", 10)
@@ -104,6 +112,7 @@ class StudentPerformanceApp(tk.Tk):
         style.configure("Horizontal.TProgressbar", troughcolor=COLORS["bar_track"], background=COLORS["primary"], bordercolor=COLORS["bar_track"])
 
     def _build_layout(self):
+        """Create the root containers and prepare both home and workspace screens."""
         self.root_frame = ttk.Frame(self, padding=(22, 18))
         self.root_frame.pack(fill="both", expand=True)
 
@@ -115,6 +124,7 @@ class StudentPerformanceApp(tk.Tk):
         self._show_home()
 
     def _build_home_screen(self, parent):
+        """Build the landing screen with navigation actions into the app workspace."""
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(0, weight=1)
         parent.rowconfigure(2, weight=1)
@@ -166,6 +176,7 @@ class StudentPerformanceApp(tk.Tk):
         ).pack(side="left", ipadx=18, padx=(10, 0))
 
     def _build_workspace(self, root):
+        """Build the shared workspace shell used by prediction, feature, and history views."""
         root.columnconfigure(0, weight=1)
         root.rowconfigure(1, weight=1)
 
@@ -190,6 +201,7 @@ class StudentPerformanceApp(tk.Tk):
         self._build_tabs(body)
 
     def _build_input_panel(self, parent):
+        """Build the left-hand form that collects one student's prediction inputs."""
         self.input_panel = ttk.Frame(parent, style="Panel.TFrame", padding=18)
         self.input_panel.grid(row=0, column=0, sticky="ns", padx=(0, 16))
         self.input_panel.columnconfigure(1, weight=1)
@@ -211,6 +223,7 @@ class StudentPerformanceApp(tk.Tk):
             "g2": tk.StringVar(value="65"),
         }
 
+        # Each tuple defines one form row: label, bound variable key, and control type/options.
         fields = [
             ("Name", "name", "entry"),
             ("Matric No.", "matric_no", "entry"),
@@ -238,6 +251,7 @@ class StudentPerformanceApp(tk.Tk):
         ttk.Button(self.input_panel, text="Batch CSV Predict", command=self._batch_predict).grid(row=button_row + 2, column=0, columnspan=2, sticky="ew", pady=5)
 
     def _build_tabs(self, parent):
+        """Build prediction results, feature-importance canvas, and history table views."""
         self.notebook = ttk.Notebook(parent)
         self.notebook.grid(row=0, column=1, sticky="nsew")
 
@@ -257,6 +271,7 @@ class StudentPerformanceApp(tk.Tk):
         self.probability_frame.pack(fill="x", pady=(0, 12))
         self.probability_bars = {}
         for klass in ["Low", "Medium", "High"]:
+            # Canvases are used instead of ttk.Progressbar so each class can have its own color.
             row = ttk.Frame(self.probability_frame, style="Surface.TFrame")
             row.pack(fill="x", pady=6)
             label = ttk.Label(row, text=klass, style="Surface.TLabel", width=9)
@@ -299,10 +314,12 @@ class StudentPerformanceApp(tk.Tk):
         self.history_tree.bind("<Double-1>", lambda _event: self._view_history_detail())
 
     def _show_home(self):
+        """Switch from the workspace back to the home screen."""
         self.workspace_frame.pack_forget()
         self.home_frame.pack(fill="both", expand=True)
 
     def _show_prediction_screen(self):
+        """Show the single-student prediction workflow."""
         self.home_frame.pack_forget()
         self.workspace_frame.pack(fill="both", expand=True)
         self._set_workspace_header(
@@ -317,6 +334,7 @@ class StudentPerformanceApp(tk.Tk):
         self.notebook.select(self.result_tab)
 
     def _show_feature_importance_screen(self):
+        """Show the model-wide feature-importance chart."""
         self.home_frame.pack_forget()
         self.workspace_frame.pack(fill="both", expand=True)
         self._set_workspace_header(
@@ -331,6 +349,7 @@ class StudentPerformanceApp(tk.Tk):
         self._draw_feature_importance()
 
     def _show_history_screen(self):
+        """Show saved prediction records and history actions."""
         self._refresh_history()
         self.home_frame.pack_forget()
         self.workspace_frame.pack(fill="both", expand=True)
@@ -345,6 +364,7 @@ class StudentPerformanceApp(tk.Tk):
         self.history_frame.grid(row=0, column=0, columnspan=2, sticky="nsew")
 
     def _set_workspace_header(self, title, subtitle, show_metrics):
+        """Update the workspace heading and optionally show training metrics."""
         self.workspace_title.configure(text=title)
         self.workspace_subtitle.configure(text=subtitle)
         if show_metrics:
@@ -353,6 +373,7 @@ class StudentPerformanceApp(tk.Tk):
             self.metrics_label.pack_forget()
 
     def _show_metrics(self):
+        """Display dataset split, holdout accuracy, and class distribution."""
         metrics = self.service.metrics
         self.metrics_label.configure(
             text=(
@@ -363,6 +384,7 @@ class StudentPerformanceApp(tk.Tk):
         )
 
     def _predict(self):
+        """Validate form input, run prediction, and update result widgets."""
         try:
             student = validate_student_input({key: var.get() for key, var in self.vars.items()})
             result = self.service.predict(student)
@@ -376,6 +398,7 @@ class StudentPerformanceApp(tk.Tk):
         self._set_probability_text(result["probabilities"])
 
     def _save_record(self):
+        """Persist the most recent prediction into the SQLite history database."""
         if not self.last_student or not self.last_prediction:
             messagebox.showwarning("No Prediction", "Please run a prediction before saving.")
             return
@@ -388,6 +411,7 @@ class StudentPerformanceApp(tk.Tk):
         messagebox.showinfo("Saved", "Prediction record saved successfully.")
 
     def _batch_predict(self):
+        """Read a CSV, predict every row, and save a new CSV with prediction columns."""
         path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
         if not path:
             return
@@ -404,6 +428,7 @@ class StudentPerformanceApp(tk.Tk):
                 rows = list(csv.DictReader(f))
             results = []
             for index, row in enumerate(rows, start=1):
+                # Batch files may use either the app's field names or the original dataset names.
                 student = StudentInput(
                     name=row.get("name", f"Student {index}"),
                     matric_no=row.get("matric_no", "-"),
@@ -422,6 +447,7 @@ class StudentPerformanceApp(tk.Tk):
                 results.append(row)
             fieldnames = list(results[0].keys()) if results else ["prediction_result", "confidence_score"]
             with open(output_path, "w", newline="", encoding="utf-8-sig") as f:
+                # utf-8-sig keeps the exported CSV friendly to Excel on Windows.
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
                 writer.writerows(results)
@@ -430,6 +456,7 @@ class StudentPerformanceApp(tk.Tk):
             messagebox.showerror("Batch Failed", str(exc))
 
     def _set_probability_text(self, probabilities):
+        """Store probabilities and redraw the three class confidence bars."""
         self.current_probabilities = dict(probabilities)
         for klass in ["Low", "Medium", "High"]:
             probability = probabilities.get(klass, 0.0)
@@ -438,6 +465,7 @@ class StudentPerformanceApp(tk.Tk):
             self._draw_probability_bar(bar, probability, PREDICTION_COLORS[klass])
 
     def _redraw_probability_bar(self, klass):
+        """Redraw one probability bar after its canvas is resized."""
         if not hasattr(self, "probability_bars"):
             return
         probability = self.current_probabilities.get(klass, 0.0)
@@ -445,6 +473,7 @@ class StudentPerformanceApp(tk.Tk):
         self._draw_probability_bar(bar, probability, PREDICTION_COLORS[klass])
 
     def _draw_probability_bar(self, canvas, probability, color):
+        """Draw a rounded track and colored fill for one probability value."""
         canvas.update_idletasks()
         width = max(canvas.winfo_width(), 260)
         height = 18
@@ -456,6 +485,7 @@ class StudentPerformanceApp(tk.Tk):
             self._rounded_rect(canvas, 0, 0, fill_width, height, radius, fill=color, outline="")
 
     def _rounded_rect(self, canvas, x1, y1, x2, y2, radius, **kwargs):
+        """Draw a rounded rectangle on a Tkinter Canvas using a smoothed polygon."""
         points = [
             x1 + radius, y1, x2 - radius, y1, x2, y1, x2, y1 + radius,
             x2, y2 - radius, x2, y2, x2 - radius, y2, x1 + radius, y2,
@@ -465,12 +495,14 @@ class StudentPerformanceApp(tk.Tk):
 
     @staticmethod
     def _read_score_100(row, key):
+        """Accept either 0-20 dataset scores or 0-100 app scores from batch CSV files."""
         value = float(row[key])
         if 0 <= value <= 20:
             return int(round(value * 5))
         return int(round(value))
 
     def _draw_feature_importance(self):
+        """Render a horizontal bar chart from the trained model's global importances."""
         if not hasattr(self, "feature_canvas"):
             return
         self.feature_canvas.delete("all")
@@ -487,6 +519,7 @@ class StudentPerformanceApp(tk.Tk):
         self.feature_canvas.create_text(chart_left, 42, text="Higher bars indicate stronger influence in the trained model.", anchor="nw", fill=COLORS["muted"], font=("Times New Roman", 9))
         max_value = max((value for _, value in items), default=1) or 1
         for i, (label, value) in enumerate(items):
+            # Normalize widths against the largest importance so the chart fills the canvas.
             y = top + 52 + i * (bar_height + gap)
             bar_width = int((value / max_value) * 430)
             self.feature_canvas.create_text(left - 14, y + bar_height / 2, text=label, anchor="e", fill=COLORS["text"], font=("Times New Roman", 10))
@@ -496,6 +529,7 @@ class StudentPerformanceApp(tk.Tk):
         self.feature_canvas.configure(scrollregion=(0, 0, canvas_width, top + 58 + len(items) * (bar_height + gap)))
 
     def _refresh_history(self):
+        """Reload saved predictions into the history table."""
         if not hasattr(self, "history_tree"):
             return
         for item in self.history_tree.get_children():
@@ -515,6 +549,7 @@ class StudentPerformanceApp(tk.Tk):
             self.history_tree.insert("", "end", values=values, tags=(tag,))
 
     def _delete_selected_history(self):
+        """Delete the selected history row after user confirmation."""
         selected = self.history_tree.selection()
         if not selected:
             messagebox.showwarning("No Selection", "Please select a history record to delete.")
@@ -537,6 +572,7 @@ class StudentPerformanceApp(tk.Tk):
             messagebox.showerror("Delete Failed", "The selected record no longer exists.")
 
     def _view_history_detail(self):
+        """Open a detail window for the selected history record."""
         selected = self.history_tree.selection()
         if not selected:
             messagebox.showwarning("No Selection", "Please select a history record to view.")
@@ -565,6 +601,7 @@ class StudentPerformanceApp(tk.Tk):
         self._show_detail_window(row, explanation)
 
     def _show_detail_window(self, row, explanation):
+        """Display saved prediction details plus current local feature influences."""
         window = tk.Toplevel(self)
         window.title(f"Prediction Detail - {row['student_name']}")
         window.geometry("720x620")
@@ -621,6 +658,7 @@ class StudentPerformanceApp(tk.Tk):
         ttk.Label(body, text=note, wraplength=660, justify="left").pack(anchor="w", pady=(12, 0))
 
     def _export_history(self):
+        """Ask for a CSV path and export saved prediction history."""
         path = filedialog.asksaveasfilename(
             defaultextension=".csv",
             filetypes=[("CSV files", "*.csv")],
@@ -633,6 +671,7 @@ class StudentPerformanceApp(tk.Tk):
 
 
 def main():
+    """Start the Tkinter event loop."""
     app = StudentPerformanceApp()
     app.mainloop()
 

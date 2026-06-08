@@ -1,17 +1,24 @@
+"""SQLite storage for saved prediction history."""
+
 import csv
 import sqlite3
 from pathlib import Path
 
 
 class HistoryDatabase:
+    """Small persistence layer used by the desktop app history screen."""
+
     def __init__(self, db_path):
+        """Store the database path and create the predictions table if needed."""
         self.db_path = Path(db_path)
         self._init_db()
 
     def _connect(self):
+        """Open a short-lived SQLite connection for one database operation."""
         return sqlite3.connect(self.db_path)
 
     def _init_db(self):
+        """Create the history table while preserving existing records."""
         with self._connect() as conn:
             conn.execute(
                 """
@@ -35,6 +42,7 @@ class HistoryDatabase:
             )
 
     def add_prediction(self, student, prediction, confidence):
+        """Insert one prediction result together with the input fields used."""
         with self._connect() as conn:
             conn.execute(
                 """
@@ -60,6 +68,7 @@ class HistoryDatabase:
             )
 
     def list_predictions(self):
+        """Return compact rows for the history table in the GUI."""
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
@@ -73,6 +82,7 @@ class HistoryDatabase:
         return [dict(row) for row in rows]
 
     def get_prediction(self, prediction_id):
+        """Return all stored fields for a selected history record."""
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             row = conn.execute(
@@ -88,6 +98,7 @@ class HistoryDatabase:
         return dict(row) if row else None
 
     def delete_prediction(self, prediction_id):
+        """Delete one record and keep visible IDs sequential for classroom demos."""
         with self._connect() as conn:
             cursor = conn.execute("DELETE FROM predictions WHERE id = ?", (prediction_id,))
             if cursor.rowcount:
@@ -95,6 +106,7 @@ class HistoryDatabase:
             return cursor.rowcount
 
     def _renumber_prediction_ids(self, conn):
+        """Rewrite IDs after deletion so the history table remains 1, 2, 3, ..."""
         rows = conn.execute("SELECT id FROM predictions ORDER BY id ASC").fetchall()
 
         # Use temporary negative ids first so updates never collide with existing primary keys.
@@ -115,6 +127,7 @@ class HistoryDatabase:
             pass
 
     def export_csv(self, path):
+        """Export the same compact columns shown in the history table."""
         rows = self.list_predictions()
         fieldnames = [
             "id",

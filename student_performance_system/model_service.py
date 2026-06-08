@@ -1,3 +1,5 @@
+"""High-level prediction workflow that prepares data and owns the model."""
+
 import random
 from collections import Counter
 
@@ -6,7 +8,10 @@ from .random_forest import RandomForestClassifier
 
 
 class PredictionService:
+    """Train the Random Forest and expose app-friendly prediction helpers."""
+
     def __init__(self, dataset_path):
+        """Create service state and train immediately so the UI is ready to use."""
         self.dataset_path = dataset_path
         self.model = None
         self.metrics = {}
@@ -14,9 +19,11 @@ class PredictionService:
         self.train()
 
     def train(self):
+        """Load the dataset, train the forest, and calculate holdout metrics."""
         x_rows, y, raw_rows = load_dataset(self.dataset_path)
         x_rows = [self._encode_row(row) for row in x_rows]
 
+        # Use a deterministic shuffle so accuracy and explanations are reproducible.
         indexes = list(range(len(y)))
         rng = random.Random(42)
         rng.shuffle(indexes)
@@ -45,6 +52,7 @@ class PredictionService:
         return self.metrics
 
     def predict(self, student_input):
+        """Predict one student's class and confidence distribution."""
         row = self._encode_row(student_input.to_feature_row())
         prediction = self.model.predict_one(row)
         probabilities = self.model.predict_proba_one(row)
@@ -56,6 +64,7 @@ class PredictionService:
         }
 
     def feature_importances(self):
+        """Return global feature importance values sorted for chart display."""
         items = []
         for feature in FEATURES:
             encoded_feature = self._encoded_feature_name(feature)
@@ -63,6 +72,7 @@ class PredictionService:
         return sorted(items, key=lambda item: item[1], reverse=True)
 
     def local_feature_importances(self, student_input):
+        """Estimate per-student influence by replacing each feature with a typical value."""
         feature_row = student_input.to_feature_row()
         encoded_row = self._encode_row(feature_row)
         prediction = self.model.predict_one(encoded_row)
@@ -71,6 +81,7 @@ class PredictionService:
 
         items = []
         for feature in FEATURES:
+            # Change one feature at a time to estimate its effect on the predicted class.
             encoded_feature = self._encoded_feature_name(feature)
             changed_row = dict(encoded_row)
             changed_row[encoded_feature] = self.reference_row.get(encoded_feature, encoded_row[encoded_feature])
@@ -96,6 +107,7 @@ class PredictionService:
         }
 
     def _encode_row(self, row):
+        """Convert mixed string/numeric rows into numeric features for the forest."""
         encoded = {}
         for feature in FEATURES:
             value = row[feature]
@@ -108,6 +120,7 @@ class PredictionService:
         return encoded
 
     def _build_reference_row(self, rows):
+        """Build a typical row: mode for binary fields, average for numeric fields."""
         reference = {}
         for feature in self.model.features:
             values = [row[feature] for row in rows]
@@ -118,6 +131,7 @@ class PredictionService:
         return reference
 
     def _display_reference_value(self, feature):
+        """Convert the encoded reference value back to a readable UI value."""
         encoded_feature = self._encoded_feature_name(feature)
         value = self.reference_row.get(encoded_feature, 0.0)
         if feature == "sex":
@@ -132,6 +146,7 @@ class PredictionService:
 
     @staticmethod
     def _encoded_feature_name(feature):
+        """Return the numeric feature name used inside the custom Random Forest."""
         if feature == "sex":
             return "sex_M"
         if feature == "activities":
