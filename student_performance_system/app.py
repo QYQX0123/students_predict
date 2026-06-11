@@ -1,4 +1,11 @@
-"""Tkinter desktop interface for the student performance prediction system."""
+"""Tkinter desktop interface for the student performance prediction system.
+
+中文：负责主窗口、页面导航、学生表单、预测结果、模型评估、历史记录和文件对话框。
+模型与数据库细节分别交给 PredictionService 和 HistoryDatabase。
+English: Builds the main window, navigation, student form, prediction results,
+model evaluation, history views, and file dialogs. Model and persistence details
+are delegated to PredictionService and HistoryDatabase.
+"""
 
 import csv
 from pathlib import Path
@@ -14,7 +21,8 @@ APP_DIR = Path(__file__).resolve().parent.parent
 DATASET_PATH = APP_DIR / "dataset.csv"
 DB_PATH = APP_DIR / "student_predictions.db"
 
-# Centralized palette keeps the Tkinter screens visually consistent.
+# 中文：集中管理颜色，使所有页面风格一致，并方便后续统一更换主题。
+# English: A centralized palette keeps every screen consistent and easy to restyle.
 COLORS = {
     "bg": "#eef3f8",
     "surface": "#ffffff",
@@ -30,7 +38,8 @@ COLORS = {
     "bar_track": "#e8eef7",
 }
 
-# Prediction labels are reused by the model and by the confidence bars.
+# 中文：预测类别与颜色的映射，用于三条置信度进度条。
+# English: Prediction-class colors used by the three confidence bars.
 PREDICTION_COLORS = {
     "Low": COLORS["danger"],
     "Medium": COLORS["warning"],
@@ -39,10 +48,24 @@ PREDICTION_COLORS = {
 
 
 class StudentPerformanceApp(tk.Tk):
-    """Main Tkinter application window and all UI event handlers."""
+    """Main application window containing all screens and event handlers.
+
+    中文：类继承 tk.Tk，因此实例本身就是根窗口。以下划线开头的方法是按钮、
+    窗口尺寸事件和初始化流程使用的内部回调。
+    English: This class inherits tk.Tk, so its instance is the root window.
+    Underscore-prefixed methods are internal callbacks for buttons, resize events,
+    and initialization.
+    """
 
     def __init__(self):
-        """Initialize services, build screens, and show default model statistics."""
+        """Initialize the window, services, application state, and widgets.
+
+        中文：PredictionService 创建时同步训练模型，HistoryDatabase 确保数据表存在。
+        所有页面只构建一次，之后通过显示或隐藏容器实现导航。
+        English: PredictionService trains synchronously during creation, and
+        HistoryDatabase ensures its table exists. Screens are built once and later
+        navigation only shows or hides their containers.
+        """
         super().__init__()
         self.title("Student Performance Prediction System")
         self.geometry("1120x720")
@@ -58,11 +81,17 @@ class StudentPerformanceApp(tk.Tk):
         self._configure_style()
         self._build_layout()
         self._refresh_history()
-        self._draw_feature_importance()
+        self._populate_evaluation()
         self._show_metrics()
 
     def _configure_style(self):
-        """Configure ttk styles used across the home, prediction, and history screens."""
+        """Define reusable ttk typography, colors, spacing, and widget states.
+
+        中文：clam 主题提供较稳定的跨平台自定义效果；style.map 配置按钮悬停、
+        按下、禁用以及表格选中等动态状态。
+        English: The clam theme provides predictable cross-platform customization.
+        style.map defines active, pressed, disabled, and selected states.
+        """
         style = ttk.Style(self)
         style.theme_use("clam")
         default_font = ("Times New Roman", 10)
@@ -112,7 +141,7 @@ class StudentPerformanceApp(tk.Tk):
         style.configure("Horizontal.TProgressbar", troughcolor=COLORS["bar_track"], background=COLORS["primary"], bordercolor=COLORS["bar_track"])
 
     def _build_layout(self):
-        """Create the root containers and prepare both home and workspace screens."""
+        """Create home and workspace containers / 创建主页与工作区顶层容器。"""
         self.root_frame = ttk.Frame(self, padding=(22, 18))
         self.root_frame.pack(fill="both", expand=True)
 
@@ -124,7 +153,7 @@ class StudentPerformanceApp(tk.Tk):
         self._show_home()
 
     def _build_home_screen(self, parent):
-        """Build the landing screen with navigation actions into the app workspace."""
+        """Build the centered home screen and its three navigation actions / 构建居中主页和三个入口。"""
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(0, weight=1)
         parent.rowconfigure(2, weight=1)
@@ -164,9 +193,9 @@ class StudentPerformanceApp(tk.Tk):
         ).pack(side="left", ipadx=18, padx=(0, 10))
         ttk.Button(
             actions,
-            text="Feature Importance",
+            text="Model Evaluation",
             style="HomeAction.TButton",
-            command=self._show_feature_importance_screen,
+            command=self._show_evaluation_screen,
         ).pack(side="left", ipadx=18, padx=10)
         ttk.Button(
             actions,
@@ -176,7 +205,12 @@ class StudentPerformanceApp(tk.Tk):
         ).pack(side="left", ipadx=18, padx=(10, 0))
 
     def _build_workspace(self, root):
-        """Build the shared workspace shell used by prediction, feature, and history views."""
+        """Build the shared header and responsive body used by work screens.
+
+        中文：预测页使用左侧输入、右侧结果；评估页和历史页隐藏这两部分并横跨两列。
+        English: Prediction uses left-side input and right-side results. Evaluation
+        and history hide them and span both grid columns.
+        """
         root.columnconfigure(0, weight=1)
         root.rowconfigure(1, weight=1)
 
@@ -201,7 +235,12 @@ class StudentPerformanceApp(tk.Tk):
         self._build_tabs(body)
 
     def _build_input_panel(self, parent):
-        """Build the left-hand form that collects one student's prediction inputs."""
+        """Build the student form and bind controls to Tkinter StringVar values.
+
+        中文：固定选项使用只读 Combobox，自由文本和数字使用 Entry。
+        English: Fixed choices use readonly Combobox widgets; free text and numbers
+        use Entry widgets.
+        """
         self.input_panel = ttk.Frame(parent, style="Panel.TFrame", padding=18)
         self.input_panel.grid(row=0, column=0, sticky="ns", padx=(0, 16))
         self.input_panel.columnconfigure(1, weight=1)
@@ -223,7 +262,8 @@ class StudentPerformanceApp(tk.Tk):
             "g2": tk.StringVar(value="65"),
         }
 
-        # Each tuple defines one form row: label, bound variable key, and control type/options.
+        # 中文：每个元组定义一行的标签、变量键，以及控件类型或下拉选项。
+        # English: Each tuple defines a label, variable key, and control type/options.
         fields = [
             ("Name", "name", "entry"),
             ("Matric No.", "matric_no", "entry"),
@@ -251,7 +291,12 @@ class StudentPerformanceApp(tk.Tk):
         ttk.Button(self.input_panel, text="Batch CSV Predict", command=self._batch_predict).grid(row=button_row + 2, column=0, columnspan=2, sticky="ew", pady=5)
 
     def _build_tabs(self, parent):
-        """Build prediction results, feature-importance canvas, and history table views."""
+        """Build prediction, model-evaluation, and history widgets.
+
+        中文：控件仅创建一次并在页面切换时复用，避免重复绑定事件和重建表格。
+        English: Widgets are created once and reused, avoiding duplicate event
+        bindings and unnecessary reconstruction.
+        """
         self.notebook = ttk.Notebook(parent)
         self.notebook.grid(row=0, column=1, sticky="nsew")
 
@@ -271,7 +316,8 @@ class StudentPerformanceApp(tk.Tk):
         self.probability_frame.pack(fill="x", pady=(0, 12))
         self.probability_bars = {}
         for klass in ["Low", "Medium", "High"]:
-            # Canvases are used instead of ttk.Progressbar so each class can have its own color.
+            # 中文：Canvas 可为每个类别提供独立颜色和圆角，因此不使用 ttk.Progressbar。
+            # English: Canvas supports per-class colors and rounded ends unlike ttk.Progressbar.
             row = ttk.Frame(self.probability_frame, style="Surface.TFrame")
             row.pack(fill="x", pady=6)
             label = ttk.Label(row, text=klass, style="Surface.TLabel", width=9)
@@ -283,11 +329,59 @@ class StudentPerformanceApp(tk.Tk):
             value.pack(side="right")
             self.probability_bars[klass] = (bar, value)
 
-        self.feature_frame = ttk.Frame(parent, style="Surface.TFrame", padding=18)
-        self.feature_frame.grid(row=0, column=1, sticky="nsew")
-        self.feature_frame.grid_remove()
-        self.feature_canvas = tk.Canvas(self.feature_frame, bg=COLORS["surface"], height=440, highlightthickness=1, highlightbackground=COLORS["border"])
-        self.feature_canvas.pack(fill="both", expand=True)
+        self.evaluation_frame = ttk.Frame(parent, style="Surface.TFrame", padding=18)
+        self.evaluation_frame.grid(row=0, column=0, columnspan=2, sticky="nsew")
+        self.evaluation_frame.grid_remove()
+        self.evaluation_frame.columnconfigure(0, weight=1)
+        self.evaluation_frame.rowconfigure(2, weight=1)
+
+        self.evaluation_summary = ttk.Label(
+            self.evaluation_frame,
+            text="",
+            style="Section.TLabel",
+            justify="left",
+        )
+        self.evaluation_summary.grid(row=0, column=0, sticky="ew", pady=(0, 12))
+
+        tables = ttk.Frame(self.evaluation_frame, style="Surface.TFrame")
+        tables.grid(row=1, column=0, sticky="ew", pady=(0, 12))
+        tables.columnconfigure(0, weight=3)
+        tables.columnconfigure(1, weight=2)
+
+        metrics_panel = ttk.Frame(tables, style="Surface.TFrame")
+        metrics_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 14))
+        ttk.Label(metrics_panel, text="Classification Metrics (5-Fold Out-of-Fold)", style="Section.TLabel").pack(anchor="w", pady=(0, 6))
+        metric_columns = ("class", "precision", "recall", "f1", "support")
+        self.metrics_tree = ttk.Treeview(metrics_panel, columns=metric_columns, show="headings", height=4)
+        for column, heading, width in [
+            ("class", "Class", 90),
+            ("precision", "Precision", 90),
+            ("recall", "Recall", 90),
+            ("f1", "F1-score", 90),
+            ("support", "Support", 75),
+        ]:
+            self.metrics_tree.heading(column, text=heading)
+            self.metrics_tree.column(column, width=width, anchor="center")
+        self.metrics_tree.pack(fill="x")
+
+        matrix_panel = ttk.Frame(tables, style="Surface.TFrame")
+        matrix_panel.grid(row=0, column=1, sticky="nsew")
+        ttk.Label(matrix_panel, text="Confusion Matrix (Actual x Predicted)", style="Section.TLabel").pack(anchor="w", pady=(0, 6))
+        matrix_columns = ("actual", "low", "medium", "high")
+        self.matrix_tree = ttk.Treeview(matrix_panel, columns=matrix_columns, show="headings", height=3)
+        for column, heading in zip(matrix_columns, ("Actual", "Low", "Medium", "High")):
+            self.matrix_tree.heading(column, text=heading)
+            self.matrix_tree.column(column, width=78, anchor="center")
+        self.matrix_tree.pack(fill="x")
+
+        self.feature_canvas = tk.Canvas(
+            self.evaluation_frame,
+            bg=COLORS["surface"],
+            height=280,
+            highlightthickness=1,
+            highlightbackground=COLORS["border"],
+        )
+        self.feature_canvas.grid(row=2, column=0, sticky="nsew")
         self.feature_canvas.bind("<Configure>", lambda _event: self._draw_feature_importance())
 
         self.history_frame = ttk.Frame(parent, style="Surface.TFrame", padding=18)
@@ -314,12 +408,12 @@ class StudentPerformanceApp(tk.Tk):
         self.history_tree.bind("<Double-1>", lambda _event: self._view_history_detail())
 
     def _show_home(self):
-        """Switch from the workspace back to the home screen."""
+        """Hide the workspace and return home / 隐藏工作区并返回主页。"""
         self.workspace_frame.pack_forget()
         self.home_frame.pack(fill="both", expand=True)
 
     def _show_prediction_screen(self):
-        """Show the single-student prediction workflow."""
+        """Show the single-student prediction workflow / 显示单个学生预测页。"""
         self.home_frame.pack_forget()
         self.workspace_frame.pack(fill="both", expand=True)
         self._set_workspace_header(
@@ -328,28 +422,33 @@ class StudentPerformanceApp(tk.Tk):
             show_metrics=True,
         )
         self.history_frame.grid_remove()
-        self.feature_frame.grid_remove()
+        self.evaluation_frame.grid_remove()
         self.input_panel.grid(row=0, column=0, sticky="ns", padx=(0, 16))
         self.notebook.grid(row=0, column=1, sticky="nsew")
         self.notebook.select(self.result_tab)
 
-    def _show_feature_importance_screen(self):
-        """Show the model-wide feature-importance chart."""
+    def _show_evaluation_screen(self):
+        """Show cross-validation metrics, confusion matrix, and global importance.
+
+        中文：进入页面时重新填充表格并重绘图表，以适应可能变化的窗口尺寸。
+        English: Tables and charts refresh on entry to accommodate window-size changes.
+        """
         self.home_frame.pack_forget()
         self.workspace_frame.pack(fill="both", expand=True)
         self._set_workspace_header(
-            "Feature Importance",
-            "This chart shows which student attributes contribute most strongly to the trained Random Forest model.",
+            "Model Evaluation",
+            "Review 5-fold cross-validation performance, classification metrics, errors, and feature importance.",
             show_metrics=False,
         )
         self.input_panel.grid_remove()
         self.notebook.grid_remove()
         self.history_frame.grid_remove()
-        self.feature_frame.grid(row=0, column=0, columnspan=2, sticky="nsew")
+        self.evaluation_frame.grid(row=0, column=0, columnspan=2, sticky="nsew")
+        self._populate_evaluation()
         self._draw_feature_importance()
 
     def _show_history_screen(self):
-        """Show saved prediction records and history actions."""
+        """Refresh and show saved prediction records / 刷新并显示预测历史。"""
         self._refresh_history()
         self.home_frame.pack_forget()
         self.workspace_frame.pack(fill="both", expand=True)
@@ -360,11 +459,11 @@ class StudentPerformanceApp(tk.Tk):
         )
         self.input_panel.grid_remove()
         self.notebook.grid_remove()
-        self.feature_frame.grid_remove()
+        self.evaluation_frame.grid_remove()
         self.history_frame.grid(row=0, column=0, columnspan=2, sticky="nsew")
 
     def _set_workspace_header(self, title, subtitle, show_metrics):
-        """Update the workspace heading and optionally show training metrics."""
+        """Set page headings and toggle the compact metrics line / 更新页头并控制指标行。"""
         self.workspace_title.configure(text=title)
         self.workspace_subtitle.configure(text=subtitle)
         if show_metrics:
@@ -373,7 +472,12 @@ class StudentPerformanceApp(tk.Tk):
             self.metrics_label.pack_forget()
 
     def _show_metrics(self):
-        """Display dataset split, holdout accuracy, and class distribution."""
+        """Display the production model's holdout summary.
+
+        中文：这里是 80/20 留出测试结果；完整五折结果位于 Model Evaluation 页面。
+        English: This is the 80/20 holdout result; full five-fold results appear on
+        the Model Evaluation screen.
+        """
         metrics = self.service.metrics
         self.metrics_label.configure(
             text=(
@@ -383,8 +487,66 @@ class StudentPerformanceApp(tk.Tk):
             )
         )
 
+    def _populate_evaluation(self):
+        """Populate all evaluation widgets from PredictionService metrics.
+
+        中文：显示每折准确率、均值和标准差，然后写入各类别 Precision、Recall、F1、
+        Support、宏平均，以及“实际类别 × 预测类别”混淆矩阵。
+        English: Displays fold accuracies, mean/std, per-class precision, recall, F1,
+        support, macro averages, and the actual-by-predicted confusion matrix.
+        """
+        if not hasattr(self, "metrics_tree"):
+            return
+        evaluation = self.service.metrics["evaluation"]
+        fold_text = ", ".join(f"{value:.2%}" for value in evaluation["fold_accuracies"])
+        self.evaluation_summary.configure(
+            text=(
+                f"5-Fold Cross-Validation Accuracy: {evaluation['mean_accuracy']:.2%} "
+                f"(standard deviation {evaluation['std_accuracy']:.2%})\n"
+                f"Fold results: {fold_text}"
+            )
+        )
+
+        for item in self.metrics_tree.get_children():
+            self.metrics_tree.delete(item)
+        for klass in evaluation["classes"]:
+            values = evaluation["per_class"][klass]
+            self.metrics_tree.insert(
+                "",
+                "end",
+                values=(
+                    klass,
+                    f"{values['precision']:.2%}",
+                    f"{values['recall']:.2%}",
+                    f"{values['f1']:.2%}",
+                    values["support"],
+                ),
+            )
+        macro = evaluation["macro_average"]
+        self.metrics_tree.insert(
+            "",
+            "end",
+            values=("Macro Avg", f"{macro['precision']:.2%}", f"{macro['recall']:.2%}", f"{macro['f1']:.2%}", macro["support"]),
+        )
+
+        for item in self.matrix_tree.get_children():
+            self.matrix_tree.delete(item)
+        matrix = evaluation["confusion_matrix"]
+        for actual in ("Low", "Medium", "High"):
+            self.matrix_tree.insert(
+                "",
+                "end",
+                values=(actual, matrix[actual]["Low"], matrix[actual]["Medium"], matrix[actual]["High"]),
+            )
+
     def _predict(self):
-        """Validate form input, run prediction, and update result widgets."""
+        """Validate the form, request a prediction, and update result widgets.
+
+        中文：失败时显示异常并停止；成功后缓存学生和结果，Save Record 只保存最近一次
+        有效预测。
+        English: Errors are displayed and abort the action. On success, the student
+        and result are cached so Save Record stores only the latest valid prediction.
+        """
         try:
             student = validate_student_input({key: var.get() for key, var in self.vars.items()})
             result = self.service.predict(student)
@@ -398,7 +560,7 @@ class StudentPerformanceApp(tk.Tk):
         self._set_probability_text(result["probabilities"])
 
     def _save_record(self):
-        """Persist the most recent prediction into the SQLite history database."""
+        """Persist the latest valid prediction / 保存最近一次有效预测。"""
         if not self.last_student or not self.last_prediction:
             messagebox.showwarning("No Prediction", "Please run a prediction before saving.")
             return
@@ -411,7 +573,13 @@ class StudentPerformanceApp(tk.Tk):
         messagebox.showinfo("Saved", "Prediction record saved successfully.")
 
     def _batch_predict(self):
-        """Read a CSV, predict every row, and save a new CSV with prediction columns."""
+        """Predict every CSV row and write an enriched output CSV.
+
+        中文：输出保留原始列，并追加 prediction_result 和 confidence_score。任何读取、
+        字段或数值错误都会通过消息框报告。
+        English: The output preserves original columns and appends prediction_result
+        and confidence_score. File, field, and numeric errors are reported in a dialog.
+        """
         path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
         if not path:
             return
@@ -428,7 +596,8 @@ class StudentPerformanceApp(tk.Tk):
                 rows = list(csv.DictReader(f))
             results = []
             for index, row in enumerate(rows, start=1):
-                # Batch files may use either the app's field names or the original dataset names.
+                # 中文：兼容应用字段 study_time 和原数据集字段 weeklystudytime。
+                # English: Accept both app field study_time and dataset field weeklystudytime.
                 student = StudentInput(
                     name=row.get("name", f"Student {index}"),
                     matric_no=row.get("matric_no", "-"),
@@ -447,7 +616,8 @@ class StudentPerformanceApp(tk.Tk):
                 results.append(row)
             fieldnames = list(results[0].keys()) if results else ["prediction_result", "confidence_score"]
             with open(output_path, "w", newline="", encoding="utf-8-sig") as f:
-                # utf-8-sig keeps the exported CSV friendly to Excel on Windows.
+                # 中文：带 BOM 的 UTF-8 可减少 Windows Excel 打开中文时的乱码。
+                # English: UTF-8 with BOM improves Chinese detection in Windows Excel.
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
                 writer.writerows(results)
@@ -456,7 +626,7 @@ class StudentPerformanceApp(tk.Tk):
             messagebox.showerror("Batch Failed", str(exc))
 
     def _set_probability_text(self, probabilities):
-        """Store probabilities and redraw the three class confidence bars."""
+        """Update text and redraw all probability bars / 更新文本并重绘概率条。"""
         self.current_probabilities = dict(probabilities)
         for klass in ["Low", "Medium", "High"]:
             probability = probabilities.get(klass, 0.0)
@@ -465,7 +635,7 @@ class StudentPerformanceApp(tk.Tk):
             self._draw_probability_bar(bar, probability, PREDICTION_COLORS[klass])
 
     def _redraw_probability_bar(self, klass):
-        """Redraw one probability bar after its canvas is resized."""
+        """Redraw one bar after Canvas resize / Canvas 尺寸变化后重绘一条概率条。"""
         if not hasattr(self, "probability_bars"):
             return
         probability = self.current_probabilities.get(klass, 0.0)
@@ -473,7 +643,12 @@ class StudentPerformanceApp(tk.Tk):
         self._draw_probability_bar(bar, probability, PREDICTION_COLORS[klass])
 
     def _draw_probability_bar(self, canvas, probability, color):
-        """Draw a rounded track and colored fill for one probability value."""
+        """Draw a rounded track and proportional colored fill.
+
+        中文：非零值至少显示一个圆角直径，避免很小的概率完全不可见。
+        English: Nonzero values receive at least one rounded-end diameter so tiny
+        probabilities remain visible.
+        """
         canvas.update_idletasks()
         width = max(canvas.winfo_width(), 260)
         height = 18
@@ -485,7 +660,12 @@ class StudentPerformanceApp(tk.Tk):
             self._rounded_rect(canvas, 0, 0, fill_width, height, radius, fill=color, outline="")
 
     def _rounded_rect(self, canvas, x1, y1, x2, y2, radius, **kwargs):
-        """Draw a rounded rectangle on a Tkinter Canvas using a smoothed polygon."""
+        """Approximate a rounded rectangle using a smoothed Canvas polygon.
+
+        中文：Canvas 没有原生圆角矩形，因此利用重复控制点和 smooth=True 模拟。
+        English: Canvas has no native rounded rectangle, so repeated control points
+        and smooth=True approximate curved corners.
+        """
         points = [
             x1 + radius, y1, x2 - radius, y1, x2, y1, x2, y1 + radius,
             x2, y2 - radius, x2, y2, x2 - radius, y2, x1 + radius, y2,
@@ -495,14 +675,14 @@ class StudentPerformanceApp(tk.Tk):
 
     @staticmethod
     def _read_score_100(row, key):
-        """Accept either 0-20 dataset scores or 0-100 app scores from batch CSV files."""
+        """Normalize batch scores to 0-100 / 将批量 CSV 的 0-20 或 0-100 成绩统一为百分制。"""
         value = float(row[key])
         if 0 <= value <= 20:
             return int(round(value * 5))
         return int(round(value))
 
     def _draw_feature_importance(self):
-        """Render a horizontal bar chart from the trained model's global importances."""
+        """Render normalized global feature importance as horizontal bars / 绘制全局特征重要性。"""
         if not hasattr(self, "feature_canvas"):
             return
         self.feature_canvas.delete("all")
@@ -511,25 +691,31 @@ class StudentPerformanceApp(tk.Tk):
         chart_width = 760
         chart_left = max((canvas_width - chart_width) // 2, 22)
         left = chart_left + 210
-        top = 30
-        bar_height = 24
-        gap = 16
+        top = 16
+        bar_height = 14
+        gap = 7
 
         self.feature_canvas.create_text(chart_left, 16, text="Random Forest Feature Importance", anchor="nw", fill=COLORS["text"], font=("Times New Roman", 14, "bold"))
-        self.feature_canvas.create_text(chart_left, 42, text="Higher bars indicate stronger influence in the trained model.", anchor="nw", fill=COLORS["muted"], font=("Times New Roman", 9))
+        self.feature_canvas.create_text(chart_left, 40, text="Higher bars indicate stronger influence in the trained model.", anchor="nw", fill=COLORS["muted"], font=("Times New Roman", 9))
         max_value = max((value for _, value in items), default=1) or 1
         for i, (label, value) in enumerate(items):
-            # Normalize widths against the largest importance so the chart fills the canvas.
-            y = top + 52 + i * (bar_height + gap)
+            # 中文：相对最大值缩放，既保留比例又充分利用图表宽度。
+            # English: Scale against the maximum to preserve ratios and use chart width.
+            y = top + 48 + i * (bar_height + gap)
             bar_width = int((value / max_value) * 430)
             self.feature_canvas.create_text(left - 14, y + bar_height / 2, text=label, anchor="e", fill=COLORS["text"], font=("Times New Roman", 10))
             self._rounded_rect(self.feature_canvas, left, y, left + 430, y + bar_height, 7, fill=COLORS["bar_track"], outline="")
             self._rounded_rect(self.feature_canvas, left, y, left + bar_width, y + bar_height, 7, fill=COLORS["primary"], outline="")
             self.feature_canvas.create_text(left + 446, y + bar_height / 2, text=f"{value:.1%}", anchor="w", fill=COLORS["muted"], font=("Times New Roman", 10, "bold"))
-        self.feature_canvas.configure(scrollregion=(0, 0, canvas_width, top + 58 + len(items) * (bar_height + gap)))
+        self.feature_canvas.configure(scrollregion=(0, 0, canvas_width, top + 54 + len(items) * (bar_height + gap)))
 
     def _refresh_history(self):
-        """Reload saved predictions into the history table."""
+        """Reload database rows and apply alternating table colors.
+
+        中文：先删除旧 Treeview 行，再插入数据库最新内容，避免显示过期记录。
+        English: Existing Treeview rows are removed before current database rows are
+        inserted, preventing stale history from remaining visible.
+        """
         if not hasattr(self, "history_tree"):
             return
         for item in self.history_tree.get_children():
@@ -549,7 +735,7 @@ class StudentPerformanceApp(tk.Tk):
             self.history_tree.insert("", "end", values=values, tags=(tag,))
 
     def _delete_selected_history(self):
-        """Delete the selected history row after user confirmation."""
+        """Validate selection, confirm deletion, then refresh / 检查选择、确认删除并刷新。"""
         selected = self.history_tree.selection()
         if not selected:
             messagebox.showwarning("No Selection", "Please select a history record to delete.")
@@ -572,7 +758,14 @@ class StudentPerformanceApp(tk.Tk):
             messagebox.showerror("Delete Failed", "The selected record no longer exists.")
 
     def _view_history_detail(self):
-        """Open a detail window for the selected history record."""
+        """Reconstruct the selected student and calculate a current explanation.
+
+        中文：数据库保留当时结果，详情页使用当前模型重新计算概率和影响；模型或数据集
+        改变后，两者可能不同。
+        English: The database preserves the original result, while the detail screen
+        recalculates probabilities and impacts with the current model. They may differ
+        after model or dataset changes.
+        """
         selected = self.history_tree.selection()
         if not selected:
             messagebox.showwarning("No Selection", "Please select a history record to view.")
@@ -601,7 +794,13 @@ class StudentPerformanceApp(tk.Tk):
         self._show_detail_window(row, explanation)
 
     def _show_detail_window(self, row, explanation):
-        """Display saved prediction details plus current local feature influences."""
+        """Display saved facts and one-feature-at-a-time local influences.
+
+        中文：影响值为原概率减去替换成典型值后的概率。正值支持当前预测，负值降低该
+        预测类别概率。
+        English: Impact is original probability minus probability after reference
+        replacement. Positive values support the prediction; negative values reduce it.
+        """
         window = tk.Toplevel(self)
         window.title(f"Prediction Detail - {row['student_name']}")
         window.geometry("720x620")
@@ -658,7 +857,7 @@ class StudentPerformanceApp(tk.Tk):
         ttk.Label(body, text=note, wraplength=660, justify="left").pack(anchor="w", pady=(12, 0))
 
     def _export_history(self):
-        """Ask for a CSV path and export saved prediction history."""
+        """Choose a destination and export history / 选择目标路径并导出历史 CSV。"""
         path = filedialog.asksaveasfilename(
             defaultextension=".csv",
             filetypes=[("CSV files", "*.csv")],
@@ -671,7 +870,7 @@ class StudentPerformanceApp(tk.Tk):
 
 
 def main():
-    """Start the Tkinter event loop."""
+    """Create the root window and start Tkinter / 创建根窗口并启动事件循环。"""
     app = StudentPerformanceApp()
     app.mainloop()
 

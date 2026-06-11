@@ -8,7 +8,10 @@ Desktop application for predicting student final performance categories using a 
 - Trains a Random Forest model without external machine-learning packages
 - Predicts `Low`, `Medium`, or `High` final performance
 - Shows prediction confidence and class probabilities
-- Displays feature importance in the GUI
+- Provides a unified model evaluation page in the GUI
+- Reports 5-fold cross-validation accuracy and standard deviation
+- Displays per-class precision, recall, F1-score, and a confusion matrix
+- Displays feature importance alongside the evaluation results
 - Shows per-student feature influence from History > View Detail
 - Saves prediction history to SQLite
 - Exports history and batch prediction results to CSV

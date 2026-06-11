@@ -1,4 +1,9 @@
-"""Shared data definitions, CSV loading, and user-input validation."""
+"""Shared data definitions, CSV loading, and user-input validation.
+
+中文：本模块统一定义学生输入结构、模型特征名称、CSV 数据集读取规则和表单校验规则。
+English: This module centralizes student input structures, model feature names,
+CSV dataset loading rules, and form validation.
+"""
 
 import csv
 from dataclasses import dataclass
@@ -10,7 +15,9 @@ STUDY_TIME_COLUMN = (
     "3 - 10 to 20 hours, or 4 - >20 hours)"
 )
 
-# Model input columns as they appear in the source CSV file.
+# 中文：模型使用的原始 CSV 列名；顺序也决定后续编码和特征重要性的展示顺序。
+# English: Raw CSV columns used by the model; this order also controls encoding
+# and feature-importance display order.
 FEATURES = [
     "sex",
     "age",
@@ -22,7 +29,8 @@ FEATURES = [
     "G2",
 ]
 
-# Friendly names used by the UI when displaying model explanations.
+# 中文：将较长或技术性的字段名转换为界面中更易理解的名称。
+# English: Convert technical dataset column names into user-friendly UI labels.
 DISPLAY_FEATURES = {
     "sex": "Gender",
     "age": "Age",
@@ -37,7 +45,12 @@ DISPLAY_FEATURES = {
 
 @dataclass
 class StudentInput:
-    """Normalized student information used by the UI, database, and model."""
+    """Store validated student information shared by all application layers.
+
+    中文：字段已经过类型转换和范围校验，可安全地用于界面、数据库和预测服务。
+    English: Fields have already been type-converted and range-validated, so the
+    object can safely be shared by the UI, database, and prediction service.
+    """
 
     name: str
     matric_no: str
@@ -51,7 +64,13 @@ class StudentInput:
     g2: int
 
     def to_feature_row(self):
-        """Convert 0-100 UI grades into the dataset's 0-20 model scale."""
+        """Convert this object to the exact feature dictionary expected by the model.
+
+        中文：界面采用 0-100 分制，而训练数据的 G1/G2 使用 0-20 分制，因此这里
+        在保留其他字段的同时完成成绩换算。
+        English: The UI uses a 0-100 scale while G1/G2 in the training dataset use
+        0-20, so this method converts grades while preserving all other fields.
+        """
         return {
             "sex": self.sex,
             "age": self.age,
@@ -65,7 +84,12 @@ class StudentInput:
 
 
 def performance_category(score):
-    """Map the original final grade (G3, 0-20) to a prediction class."""
+    """Map final grade G3 (0-20) to Low, Medium, or High.
+
+    中文：低于 10 为 Low，10 至低于 15 为 Medium，15 及以上为 High。
+    English: Scores below 10 are Low, 10 to below 15 are Medium, and 15 or above
+    are High.
+    """
     score = float(score)
     if score < 10:
         return "Low"
@@ -75,12 +99,19 @@ def performance_category(score):
 
 
 def score_100_to_20(score):
-    """Convert a classroom-style 0-100 score into the dataset's 0-20 scale."""
+    """Convert a 0-100 score to the dataset's 0-20 scale / 将百分制换算为二十分制。"""
     return round(float(score) / 5, 2)
 
 
 def load_dataset(path):
-    """Load the CSV dataset and split it into feature rows, labels, and raw rows."""
+    """Load and validate the training CSV.
+
+    中文：返回三个对象：模型特征行列表、由 G3 生成的分类标签列表，以及未经转换的
+    原始行。文件不存在、没有数据或缺少必要列时会立即抛出清晰的异常。
+    English: Returns model feature rows, class labels derived from G3, and untouched
+    raw rows. Clear exceptions are raised for a missing file, empty data, or schema
+    mismatch.
+    """
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"Dataset not found: {path}")
@@ -91,7 +122,8 @@ def load_dataset(path):
     if not rows:
         raise ValueError("Dataset is empty.")
 
-    # Fail early if the CSV schema is not compatible with the training pipeline.
+    # 中文：训练前先检查结构，避免在模型内部出现难以定位的 KeyError。
+    # English: Validate the schema early to avoid obscure KeyError failures in training.
     missing = [col for col in FEATURES + ["G3"] if col not in rows[0]]
     if missing:
         raise ValueError(f"Dataset is missing required columns: {', '.join(missing)}")
@@ -102,7 +134,9 @@ def load_dataset(path):
         item = {}
         for feature in FEATURES:
             value = row[feature]
-            # Categorical values stay as strings until PredictionService encodes them.
+            # 中文：分类字段暂时保留字符串，由 PredictionService 统一数值编码。
+            # English: Keep categorical values as strings until PredictionService
+            # performs consistent numeric encoding.
             if feature in {"sex", "activities"}:
                 item[feature] = value.strip()
             else:
@@ -114,7 +148,14 @@ def load_dataset(path):
 
 
 def validate_student_input(values):
-    """Validate raw Tkinter string values and return a typed StudentInput object."""
+    """Validate raw form strings and return a typed StudentInput.
+
+    中文：Tkinter 输入均为字符串。本函数检查分类选项、整数格式及允许范围，并为
+    空姓名和空学号提供默认值；任何错误都以 ValueError 返回给界面显示。
+    English: Tkinter inputs arrive as strings. This function validates categories,
+    integer syntax, and allowed ranges, supplies defaults for blank identity fields,
+    and reports failures as ValueError messages for the UI.
+    """
     name = values.get("name", "").strip()
     matric_no = values.get("matric_no", "").strip()
     sex = values.get("sex", "").strip()
@@ -126,7 +167,7 @@ def validate_student_input(values):
         raise ValueError("Activities must be yes or no.")
 
     def int_in_range(key, label, low, high):
-        """Parse one integer field and enforce its inclusive valid range."""
+        """Parse and range-check one integer / 解析整数并检查闭区间范围。"""
         try:
             value = int(values.get(key, ""))
         except ValueError as exc:
