@@ -125,6 +125,19 @@ class HistoryDatabase:
                 self._renumber_prediction_ids(conn)
             return cursor.rowcount
 
+    def delete_predictions(self, prediction_ids):
+        """Delete multiple records and renumber remaining visible IDs once."""
+        ids = [int(prediction_id) for prediction_id in prediction_ids]
+        if not ids:
+            return 0
+
+        placeholders = ", ".join("?" for _ in ids)
+        with self._connect() as conn:
+            cursor = conn.execute(f"DELETE FROM predictions WHERE id IN ({placeholders})", ids)
+            if cursor.rowcount:
+                self._renumber_prediction_ids(conn)
+            return cursor.rowcount
+
     def _renumber_prediction_ids(self, conn):
         """Rewrite IDs safely so they remain 1, 2, 3, ...
 

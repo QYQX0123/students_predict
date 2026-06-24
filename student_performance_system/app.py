@@ -8,11 +8,15 @@ are delegated to PredictionService and HistoryDatabase.
 """
 
 import csv
+import posixpath
+import re
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from xml.etree import ElementTree
+from zipfile import ZipFile
 
-from .data_utils import StudentInput, validate_student_input
+from .data_utils import STUDY_TIME_COLUMN, StudentInput, validate_student_input
 from .database import HistoryDatabase
 from .model_service import PredictionService
 
@@ -20,6 +24,41 @@ from .model_service import PredictionService
 APP_DIR = Path(__file__).resolve().parent.parent
 DATASET_PATH = APP_DIR / "dataset.csv"
 DB_PATH = APP_DIR / "student_predictions.db"
+
+BATCH_COLUMN_ALIASES = {
+    "name": ("name", "student name", "student_name"),
+    "matric_no": (
+        "matric_no",
+        "matric no",
+        "matric no.",
+        "student number",
+        "student_number",
+        "student id",
+        "student_id",
+        "matric",
+    ),
+    "sex": ("sex", "gender"),
+    "age": ("age",),
+    "study_time": ("study_time", "study time", "weekly study time", "weeklystudytime", STUDY_TIME_COLUMN),
+    "failures": ("failures", "failure", "previous failures"),
+    "activities": ("activities", "activity", "extracurricular activities"),
+    "absences": ("absences", "absence", "absent"),
+    "g1": ("g1", "previous grade", "previous grade g1", "previous grade (g1)", "previous grade g1 (0-100)"),
+    "g2": ("g2", "midterm grade", "midterm grade g2", "midterm grade (g2)", "midterm grade g2 (0-100)"),
+}
+
+BATCH_FIELD_LABELS = {
+    "name": "Name",
+    "matric_no": "Matric No.",
+    "sex": "Gender/Sex",
+    "age": "Age",
+    "study_time": "Study Time",
+    "failures": "Failures",
+    "activities": "Activities",
+    "absences": "Absences",
+    "g1": "G1 (0-100)",
+    "g2": "G2 (0-100)",
+}
 
 # 中文：集中管理颜色，使所有页面风格一致，并方便后续统一更换主题。
 # English: A centralized palette keeps every screen consistent and easy to restyle.
@@ -332,7 +371,7 @@ class StudentPerformanceApp(tk.Tk):
         button_row = len(fields) + 1
         ttk.Button(self.input_panel, text="Predict", style="Accent.TButton", command=self._predict).grid(row=button_row, column=0, columnspan=2, sticky="ew", pady=(10, 3))
         ttk.Button(self.input_panel, text="Save Record", style="Success.TButton", command=self._save_record).grid(row=button_row + 1, column=0, columnspan=2, sticky="ew", pady=3)
-        ttk.Button(self.input_panel, text="Batch CSV Predict", command=self._batch_predict).grid(row=button_row + 2, column=0, columnspan=2, sticky="ew", pady=3)
+        ttk.Button(self.input_panel, text="Import CSV/XLSX to History", command=self._batch_predict).grid(row=button_row + 2, column=0, columnspan=2, sticky="ew", pady=3)
 
     def _build_tabs(self, parent):
         """Build prediction, model-evaluation, and history widgets.
@@ -491,7 +530,7 @@ class StudentPerformanceApp(tk.Tk):
         ttk.Button(controls, text="Export CSV", command=self._export_history).pack(side="left")
 
         columns = ("id", "timestamp", "student_name", "matric_no", "g1", "g2", "prediction_result", "confidence_score")
-        self.history_tree = ttk.Treeview(self.history_frame, columns=columns, show="headings", height=16)
+        self.history_tree = ttk.Treeview(self.history_frame, columns=columns, show="headings", height=16, selectmode="extended")
         for col in columns:
             self.history_tree.heading(col, text=col)
             self.history_tree.column(col, width=110, anchor="center")
@@ -720,7 +759,7 @@ class StudentPerformanceApp(tk.Tk):
         self._refresh_history()
         messagebox.showinfo("Saved", "Prediction record saved successfully.")
 
-    def _batch_predict(self):
+    def _batch_predict_legacy(self):
         """Predict every CSV row and write an enriched output CSV.
 
         中文：输出保留原始列，并追加 prediction_result 和 confidence_score。任何读取、
@@ -821,6 +860,234 @@ class StudentPerformanceApp(tk.Tk):
         ]
         return canvas.create_polygon(points, smooth=True, **kwargs)
 
+    def _batch_predict(self):
+        """Import CSV/XLSX rows, validate them, predict, and save to history."""
+        path = filedialog.askopenfilename(
+            filetypes=[
+                ("CSV and Excel files", "*.csv *.xlsx"),
+                ("CSV files", "*.csv"),
+                ("Excel workbooks", "*.xlsx"),
+            ]
+        )
+        if not path:
+            return
+
+        try:
+            students = self._load_batch_students(Path(path))
+            if not students:
+                raise ValueError("The selected file does not contain any student rows.")
+            for student in students:
+                result = self.service.predict(student)
+                self.db.add_prediction(student, result["prediction"], result["confidence"])
+            self._refresh_history()
+            self._show_history_screen()
+            messagebox.showinfo("Batch Complete", f"Imported {len(students)} prediction records into History.")
+        except Exception as exc:
+            messagebox.showerror("Batch Failed", str(exc))
+
+    @classmethod
+    def _load_batch_students(cls, path):
+        """Read supported batch files and return fully validated student inputs."""
+        rows = cls._read_batch_rows(path)
+        students = []
+        errors = []
+        for row_number, row in rows:
+            values = cls._batch_row_to_form_values(row)
+            try:
+                students.append(validate_student_input(values, require_identity=True))
+            except ValueError as exc:
+                errors.append(f"Row {row_number}: {exc}")
+
+        if errors:
+            visible_errors = errors[:10]
+            remaining = len(errors) - len(visible_errors)
+            message = "Batch import failed. Please fix these rows:\n" + "\n".join(visible_errors)
+            if remaining > 0:
+                message += f"\n... and {remaining} more row(s)."
+            raise ValueError(message)
+        return students
+
+    @classmethod
+    def _read_batch_rows(cls, path):
+        """Read .csv or .xlsx files as row dictionaries keyed by header names."""
+        suffix = path.suffix.lower()
+        if suffix == ".csv":
+            return cls._read_csv_batch_rows(path)
+        if suffix == ".xlsx":
+            return cls._read_xlsx_batch_rows(path)
+        raise ValueError("Only .csv and .xlsx files can be imported.")
+
+    @classmethod
+    def _read_csv_batch_rows(cls, path):
+        """Read CSV rows while preserving spreadsheet-like row numbers."""
+        with path.open(newline="", encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            cls._validate_batch_headers(reader.fieldnames or [])
+            rows = []
+            for row_number, row in enumerate(reader, start=2):
+                clean_row = {key: value for key, value in row.items() if key is not None}
+                if cls._row_has_value(clean_row):
+                    rows.append((row_number, clean_row))
+            return rows
+
+    @classmethod
+    def _read_xlsx_batch_rows(cls, path):
+        """Read the first worksheet from an XLSX file using only the standard library."""
+        try:
+            with ZipFile(path) as workbook:
+                sheet_path = cls._first_worksheet_path(workbook)
+                shared_strings = cls._read_shared_strings(workbook)
+                root = ElementTree.fromstring(workbook.read(sheet_path))
+        except KeyError as exc:
+            raise ValueError("The XLSX file is missing required worksheet data.") from exc
+
+        namespace = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+        raw_rows = []
+        for row_element in root.findall(".//main:sheetData/main:row", namespace):
+            row_number = int(row_element.attrib.get("r", len(raw_rows) + 1))
+            values = {}
+            for cell in row_element.findall("main:c", namespace):
+                reference = cell.attrib.get("r", "")
+                match = re.match(r"([A-Z]+)", reference)
+                if not match:
+                    continue
+                values[cls._column_number(match.group(1))] = cls._xlsx_cell_text(cell, shared_strings, namespace)
+            if any(value.strip() for value in values.values()):
+                raw_rows.append((row_number, values))
+
+        if not raw_rows:
+            raise ValueError("The XLSX file is empty.")
+
+        _header_row_number, header_cells = raw_rows[0]
+        max_column = max(header_cells)
+        headers = [header_cells.get(index, "").strip() for index in range(1, max_column + 1)]
+        cls._validate_batch_headers(headers)
+
+        rows = []
+        for row_number, cells in raw_rows[1:]:
+            row = {
+                header: cells.get(index, "")
+                for index, header in enumerate(headers, start=1)
+                if header
+            }
+            if cls._row_has_value(row):
+                rows.append((row_number, row))
+        return rows
+
+    @classmethod
+    def _first_worksheet_path(cls, workbook):
+        """Resolve the first sheet path from workbook relationships."""
+        workbook_root = ElementTree.fromstring(workbook.read("xl/workbook.xml"))
+        namespace = {
+            "main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+            "rel": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+        }
+        first_sheet = workbook_root.find("main:sheets/main:sheet", namespace)
+        if first_sheet is None:
+            raise ValueError("The XLSX file does not contain any worksheet.")
+        relation_id = first_sheet.attrib.get(f"{{{namespace['rel']}}}id")
+
+        relationships_root = ElementTree.fromstring(workbook.read("xl/_rels/workbook.xml.rels"))
+        rel_namespace = {"pkg": "http://schemas.openxmlformats.org/package/2006/relationships"}
+        for relationship in relationships_root.findall("pkg:Relationship", rel_namespace):
+            if relationship.attrib.get("Id") == relation_id:
+                target = relationship.attrib["Target"]
+                if target.startswith("/"):
+                    return target.lstrip("/")
+                return posixpath.normpath(posixpath.join("xl", target))
+        raise ValueError("The XLSX workbook relationship for the first sheet is invalid.")
+
+    @staticmethod
+    def _read_shared_strings(workbook):
+        """Return the workbook shared string table, if one exists."""
+        if "xl/sharedStrings.xml" not in workbook.namelist():
+            return []
+        namespace = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+        root = ElementTree.fromstring(workbook.read("xl/sharedStrings.xml"))
+        strings = []
+        for item in root.findall("main:si", namespace):
+            strings.append("".join(text.text or "" for text in item.findall(".//main:t", namespace)))
+        return strings
+
+    @classmethod
+    def _xlsx_cell_text(cls, cell, shared_strings, namespace):
+        """Convert one XLSX cell to the text used by the batch validator."""
+        cell_type = cell.attrib.get("t")
+        if cell_type == "s":
+            value = cell.find("main:v", namespace)
+            if value is None or value.text is None:
+                return ""
+            return shared_strings[int(value.text)].strip()
+        if cell_type == "inlineStr":
+            inline = cell.find("main:is", namespace)
+            if inline is None:
+                return ""
+            return "".join(text.text or "" for text in inline.findall(".//main:t", namespace)).strip()
+
+        value = cell.find("main:v", namespace)
+        if value is None or value.text is None:
+            return ""
+        return cls._display_spreadsheet_value(value.text)
+
+    @staticmethod
+    def _display_spreadsheet_value(value):
+        """Keep spreadsheet numbers readable for validation error messages."""
+        try:
+            number = float(value)
+        except ValueError:
+            return str(value).strip()
+        if number.is_integer():
+            return str(int(number))
+        return str(number).strip()
+
+    @staticmethod
+    def _column_number(column_letters):
+        """Convert Excel column letters into a 1-based index."""
+        number = 0
+        for letter in column_letters:
+            number = number * 26 + ord(letter) - ord("A") + 1
+        return number
+
+    @classmethod
+    def _validate_batch_headers(cls, headers):
+        """Ensure the import file contains every column required by the form."""
+        normalized_headers = {cls._normalize_header(header) for header in headers if header}
+        missing = []
+        for key, aliases in BATCH_COLUMN_ALIASES.items():
+            if not any(cls._normalize_header(alias) in normalized_headers for alias in aliases):
+                missing.append(BATCH_FIELD_LABELS[key])
+        if missing:
+            raise ValueError("Missing required columns: " + ", ".join(missing))
+
+    @classmethod
+    def _batch_row_to_form_values(cls, row):
+        """Map flexible spreadsheet headers into the exact form field keys."""
+        normalized_row = {}
+        for key, value in row.items():
+            normalized_key = cls._normalize_header(key)
+            if normalized_key and normalized_key not in normalized_row:
+                normalized_row[normalized_key] = "" if value is None else str(value).strip()
+
+        values = {}
+        for key, aliases in BATCH_COLUMN_ALIASES.items():
+            values[key] = ""
+            for alias in aliases:
+                value = normalized_row.get(cls._normalize_header(alias), "")
+                if value != "":
+                    values[key] = value
+                    break
+        return values
+
+    @staticmethod
+    def _normalize_header(header):
+        """Normalize headers so CSV/XLSX templates can use friendly labels."""
+        return re.sub(r"[^a-z0-9]+", "", str(header).strip().lower())
+
+    @staticmethod
+    def _row_has_value(row):
+        """Return True when at least one imported cell contains content."""
+        return any(str(value or "").strip() for value in row.values())
+
     @staticmethod
     def _read_score_100(row, key):
         """Normalize batch scores to 0-100 / 将批量 CSV 的 0-20 或 0-100 成绩统一为百分制。"""
@@ -882,7 +1149,7 @@ class StudentPerformanceApp(tk.Tk):
             tag = "even" if index % 2 else "odd"
             self.history_tree.insert("", "end", values=values, tags=(tag,))
 
-    def _delete_selected_history(self):
+    def _delete_selected_history_single_legacy(self):
         """Validate selection, confirm deletion, then refresh / 检查选择、确认删除并刷新。"""
         selected = self.history_tree.selection()
         if not selected:
@@ -904,6 +1171,32 @@ class StudentPerformanceApp(tk.Tk):
             messagebox.showinfo("Deleted", "History record deleted successfully.")
         else:
             messagebox.showerror("Delete Failed", "The selected record no longer exists.")
+
+    def _delete_selected_history(self):
+        """Delete one or more selected history rows after confirmation."""
+        selected = self.history_tree.selection()
+        if not selected:
+            messagebox.showwarning("No Selection", "Please select one or more history records to delete.")
+            return
+
+        prediction_ids = [self.history_tree.item(item, "values")[0] for item in selected]
+        id_text = ", ".join(str(prediction_id) for prediction_id in prediction_ids[:10])
+        if len(prediction_ids) > 10:
+            id_text += f", ... and {len(prediction_ids) - 10} more"
+
+        confirm = messagebox.askyesno(
+            "Delete Records",
+            f"Delete {len(prediction_ids)} selected prediction record(s)?\n\nIDs: {id_text}",
+        )
+        if not confirm:
+            return
+
+        deleted = self.db.delete_predictions(prediction_ids)
+        if deleted:
+            self._refresh_history()
+            messagebox.showinfo("Deleted", f"Deleted {deleted} history record(s) successfully.")
+        else:
+            messagebox.showerror("Delete Failed", "The selected records no longer exist.")
 
     def _view_history_detail(self):
         """Reconstruct the selected student and calculate a current explanation.

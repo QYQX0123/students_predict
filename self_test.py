@@ -7,10 +7,74 @@ without opening the Tkinter interface.
 
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from xml.sax.saxutils import escape
+from zipfile import ZipFile
 
-from student_performance_system.data_utils import validate_student_input
+from student_performance_system.app import StudentPerformanceApp
+from student_performance_system.data_utils import STUDY_TIME_COLUMN, validate_student_input
 from student_performance_system.database import HistoryDatabase
 from student_performance_system.model_service import PredictionService
+
+
+def write_minimal_xlsx(path, headers, rows):
+    """Create a tiny one-sheet XLSX fixture with inline strings and numeric values."""
+    def column_letters(index):
+        letters = ""
+        while index:
+            index, remainder = divmod(index - 1, 26)
+            letters = chr(ord("A") + remainder) + letters
+        return letters
+
+    def cell_xml(row_number, column_index, value):
+        reference = f"{column_letters(column_index)}{row_number}"
+        if isinstance(value, (int, float)):
+            return f'<c r="{reference}"><v>{value}</v></c>'
+        return f'<c r="{reference}" t="inlineStr"><is><t>{escape(str(value))}</t></is></c>'
+
+    sheet_rows = []
+    for row_number, values in enumerate([headers, *rows], start=1):
+        cells = "".join(cell_xml(row_number, column_index, value) for column_index, value in enumerate(values, start=1))
+        sheet_rows.append(f'<row r="{row_number}">{cells}</row>')
+
+    with ZipFile(path, "w") as workbook:
+        workbook.writestr(
+            "[Content_Types].xml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>""",
+        )
+        workbook.writestr(
+            "_rels/.rels",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>""",
+        )
+        workbook.writestr(
+            "xl/workbook.xml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
+</workbook>""",
+        )
+        workbook.writestr(
+            "xl/_rels/workbook.xml.rels",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>""",
+        )
+        workbook.writestr(
+            "xl/worksheets/sheet1.xml",
+            f"""<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>{''.join(sheet_rows)}</sheetData>
+</worksheet>""",
+        )
 
 
 def main():
@@ -64,6 +128,74 @@ def main():
         assert [row["id"] for row in db.list_predictions()] == [1]
         db.add_prediction(student, result["prediction"], result["confidence"])
         assert [row["id"] for row in db.list_predictions()] == [1, 2]
+        db.add_prediction(student, result["prediction"], result["confidence"])
+        db.add_prediction(student, result["prediction"], result["confidence"])
+        assert [row["id"] for row in db.list_predictions()] == [1, 2, 3, 4]
+        assert db.delete_predictions([2, 4]) == 2
+        assert [row["id"] for row in db.list_predictions()] == [1, 2]
+
+        csv_path = Path(tmp) / "batch_students.csv"
+        csv_path.write_text(
+            (
+                f'name,matric_no,sex,age,"{STUDY_TIME_COLUMN}",failures,activities,absences,G1,G2\n'
+                "CSV Student,C001,F,17,3,0,yes,5,80,85\n"
+            ),
+            encoding="utf-8",
+        )
+        csv_students = StudentPerformanceApp._load_batch_students(csv_path)
+        assert len(csv_students) == 1
+        assert csv_students[0].name == "CSV Student"
+        assert csv_students[0].study_time == 3
+        assert csv_students[0].g1 == 80
+
+        xlsx_path = Path(tmp) / "batch_students.xlsx"
+        batch_headers = [
+            "Name",
+            "Matric No.",
+            "Gender",
+            "Age",
+            "Study Time",
+            "Failures",
+            "Activities",
+            "Absences",
+            "G1",
+            "G2",
+        ]
+        write_minimal_xlsx(
+            xlsx_path,
+            batch_headers,
+            [["XLSX Student", "X001", "M", 18, 2, 0, "no", 2, 70, 75]],
+        )
+        xlsx_students = StudentPerformanceApp._load_batch_students(xlsx_path)
+        assert len(xlsx_students) == 1
+        assert xlsx_students[0].name == "XLSX Student"
+        assert xlsx_students[0].matric_no == "X001"
+        assert xlsx_students[0].g2 == 75
+
+        for imported_student in [*csv_students, *xlsx_students]:
+            imported_result = service.predict(imported_student)
+            db.add_prediction(imported_student, imported_result["prediction"], imported_result["confidence"])
+        assert [row["student_name"] for row in db.list_predictions()][-2:] == ["CSV Student", "XLSX Student"]
+
+        invalid_path = Path(tmp) / "invalid_batch.csv"
+        invalid_path.write_text(
+            (
+                "name,matric_no,sex,age,study_time,failures,activities,absences,G1,G2\n"
+                "No Id,,F,17,2,0,yes,4,80,65\n"
+                "Bad Grade,B001,F,17,2,0,yes,4,101,65\n"
+            ),
+            encoding="utf-8",
+        )
+        try:
+            StudentPerformanceApp._load_batch_students(invalid_path)
+        except ValueError as exc:
+            message = str(exc)
+            assert "Row 2" in message
+            assert "Matric No." in message
+            assert "Row 3" in message
+            assert "Previous grade G1 must be between 0 and 100" in message
+        else:
+            raise AssertionError("Invalid batch input should fail validation.")
 
     print("Self-test passed")
     print(f"Holdout accuracy: {service.metrics['accuracy']:.2%}")

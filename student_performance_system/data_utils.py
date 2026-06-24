@@ -147,7 +147,7 @@ def load_dataset(path):
     return x_rows, y, rows
 
 
-def validate_student_input(values):
+def validate_student_input(values, require_identity=False):
     """Validate raw form strings and return a typed StudentInput.
 
     中文：Tkinter 输入均为字符串。本函数检查分类选项、整数格式及允许范围，并为
@@ -161,6 +161,12 @@ def validate_student_input(values):
     sex = values.get("sex", "").strip()
     activities = values.get("activities", "").strip()
 
+    if require_identity:
+        if not name:
+            raise ValueError("Name is required.")
+        if not matric_no:
+            raise ValueError("Matric No. is required.")
+
     if sex not in {"F", "M"}:
         raise ValueError("Gender must be F or M.")
     if activities not in {"yes", "no"}:
@@ -169,9 +175,13 @@ def validate_student_input(values):
     def int_in_range(key, label, low, high):
         """Parse and range-check one integer / 解析整数并检查闭区间范围。"""
         try:
-            value = int(values.get(key, ""))
+            raw_value = str(values.get(key, "")).strip()
+            number = float(raw_value)
         except ValueError as exc:
             raise ValueError(f"{label} must be a whole number.") from exc
+        if not number.is_integer():
+            raise ValueError(f"{label} must be a whole number.")
+        value = int(number)
         if value < low or value > high:
             raise ValueError(f"{label} must be between {low} and {high}.")
         return value
