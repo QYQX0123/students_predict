@@ -1,22 +1,22 @@
 # Student Performance Prediction System
 
-Desktop application for predicting student final performance categories using a Random Forest classifier.
+Desktop application for estimating whether a student is likely to pass the final assessment using a Random Forest classifier.
 
 ## Features
 
 - Loads `dataset.csv`
 - Trains a Random Forest model without external machine-learning packages
-- Predicts `Low`, `Medium`, or `High` final performance
-- Shows prediction confidence and class probabilities
+- Predicts `Pass` or `Fail` based on the final-grade pass threshold
+- Shows the estimated pass probability and fail risk
+- Displays key factors for the current prediction using lightweight feature perturbation
 - Provides a unified model evaluation page in the GUI
 - Reports 5-fold cross-validation accuracy and standard deviation
 - Displays per-class precision, recall, F1-score, and a confusion matrix
 - Displays feature importance alongside the evaluation results
-- Shows per-student feature influence from History > View Detail
 - Saves prediction history to SQLite
 - Supports single or batch deletion of saved history records
 - Imports validated CSV/XLSX batch prediction records directly into History
-- Exports saved history to CSV
+- Exports saved history to CSV or styled XLSX with predicted G3 scores and Pass/Fail row colors
 
 ## Run
 
@@ -38,11 +38,10 @@ python run_app.py
 
 ## Prediction Meaning
 
-The system predicts the final performance category from available stage-based student data:
+The system predicts pass/fail status, pass probability, and an estimated final G3 score from available stage-based student data:
 
-- `Low`: final grade below 50
-- `Medium`: final grade from 50 to 74
-- `High`: final grade 75 or above
+- `Fail`: final grade below 50
+- `Pass`: final grade 50 or above
 
 The GUI accepts `G1` and `G2` as 0-100 scores. Internally, the system converts them to the dataset's original 0-20 scale before prediction.
 
