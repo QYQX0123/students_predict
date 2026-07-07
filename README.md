@@ -14,7 +14,8 @@ Desktop application for estimating whether a student is likely to pass the final
 - Displays per-class precision, recall, F1-score, and a confusion matrix
 - Displays feature importance alongside the evaluation results
 - Saves prediction history to SQLite
-- Supports single or batch deletion of saved history records
+- Supports single or batch deletion of saved history records with Select All and drag selection
+- Supports History search, filters, and click-to-sort table headings
 - Imports validated CSV/XLSX batch prediction records directly into History
 - Exports saved history to CSV or styled XLSX with predicted G3 scores and Pass/Fail row colors
 
@@ -44,6 +45,8 @@ The system predicts pass/fail status, pass probability, and an estimated final G
 - `Pass`: final grade 50 or above
 
 The GUI accepts `G1` and `G2` as 0-100 scores. Internally, the system converts them to the dataset's original 0-20 scale before prediction.
+
+The History page can search by student/name fields, filter by result, sort records by clicking column headings, select records by button or mouse drag, inspect saved details, delete selected records, and export the current history table.
 
 Batch import accepts `.csv` and `.xlsx` files. Each row must include:
 

@@ -103,6 +103,21 @@ PREDICTION_COLORS = {
 
 PROBABILITY_BAR_LABELS = (("Pass", "Pass Probability"), ("Fail", "Fail Risk"))
 
+HISTORY_COLUMN_HEADINGS = {
+    "id": "ID",
+    "timestamp": "Timestamp",
+    "student_name": "Student",
+    "matric_no": "Matric No.",
+    "g1": "G1",
+    "g2": "G2",
+    "predicted_g3": "Predicted G3",
+    "prediction_result": "Result",
+    "pass_probability": "Pass Probability",
+}
+
+HISTORY_NUMERIC_COLUMNS = {"id", "g1", "g2", "predicted_g3", "pass_probability"}
+HISTORY_RESULT_FILTERS = ("All Results", "Pass", "Fail")
+
 
 class StudentPerformanceApp(tk.Tk):
     """Root window, screen manager, and event-handler collection.
@@ -141,6 +156,10 @@ class StudentPerformanceApp(tk.Tk):
         self.last_student = None
         self.last_prediction = None
         self.current_probabilities = {"Fail": 0.0, "Pass": 0.0}
+        self.history_search_var = tk.StringVar()
+        self.history_result_filter_var = tk.StringVar(value=HISTORY_RESULT_FILTERS[0])
+        self.history_sort_column = "id"
+        self.history_sort_reverse = False
 
         self._configure_style()
         self._build_layout()
@@ -514,13 +533,17 @@ class StudentPerformanceApp(tk.Tk):
         self.evaluation_frame.columnconfigure(0, weight=1)
         self.evaluation_frame.rowconfigure(1, weight=1)
 
+        evaluation_header = ttk.Frame(self.evaluation_frame, style="Surface.TFrame")
+        evaluation_header.grid(row=0, column=0, sticky="ew", pady=(0, 12))
+        evaluation_header.columnconfigure(0, weight=1)
+
         self.evaluation_summary = ttk.Label(
-            self.evaluation_frame,
+            evaluation_header,
             text="",
             style="Section.TLabel",
             justify="left",
         )
-        self.evaluation_summary.grid(row=0, column=0, sticky="ew", pady=(0, 12))
+        self.evaluation_summary.grid(row=0, column=0, sticky="ew")
 
         evaluation_grid = ttk.Frame(self.evaluation_frame, style="Surface.TFrame")
         evaluation_grid.grid(row=1, column=0, sticky="nsew")
@@ -593,33 +616,63 @@ class StudentPerformanceApp(tk.Tk):
         controls.pack(fill="x", pady=(0, 8))
         ttk.Button(controls, text="Refresh", command=self._refresh_history).pack(side="left")
         ttk.Button(controls, text="View Detail", command=self._view_history_detail).pack(side="left", padx=(8, 0))
+        ttk.Button(controls, text="Select All", command=self._select_all_history).pack(side="left", padx=(8, 0))
         ttk.Button(controls, text="Delete Selected", command=self._delete_selected_history).pack(side="left", padx=8)
         ttk.Button(controls, text="Export Table", command=self._export_history).pack(side="left")
 
-        columns = ("id", "timestamp", "student_name", "matric_no", "g1", "g2", "predicted_g3", "prediction_result", "pass_probability")
+        filters = ttk.Frame(self.history_frame, style="Toolbar.TFrame")
+        filters.pack(fill="x", pady=(0, 8))
+        ttk.Label(filters, text="Search:").pack(side="left")
+        search_entry = ttk.Entry(filters, textvariable=self.history_search_var, width=24)
+        search_entry.pack(side="left", padx=(6, 12))
+        search_entry.bind("<KeyRelease>", lambda _event: self._refresh_history())
+
+        ttk.Label(filters, text="Result:").pack(side="left")
+        ttk.Combobox(
+            filters,
+            textvariable=self.history_result_filter_var,
+            values=HISTORY_RESULT_FILTERS,
+            state="readonly",
+            width=13,
+        ).pack(side="left", padx=(6, 12))
+        ttk.Button(filters, text="Clear Filters", command=self._clear_history_filters).pack(side="left")
+        self.history_count_label = ttk.Label(filters, text="", style="Muted.TLabel")
+        self.history_count_label.pack(side="right")
+
+        columns = (
+            "id",
+            "timestamp",
+            "student_name",
+            "matric_no",
+            "g1",
+            "g2",
+            "predicted_g3",
+            "prediction_result",
+            "pass_probability",
+        )
         self.history_tree = ttk.Treeview(self.history_frame, columns=columns, show="headings", height=16, selectmode="extended")
-        headings = {
-            "id": "ID",
-            "timestamp": "Timestamp",
-            "student_name": "Student",
-            "matric_no": "Matric No.",
-            "g1": "G1",
-            "g2": "G2",
-            "predicted_g3": "Predicted G3",
-            "prediction_result": "Result",
-            "pass_probability": "Pass Probability",
-        }
         for col in columns:
-            self.history_tree.heading(col, text=headings[col])
-            self.history_tree.column(col, width=110, anchor="center")
-        self.history_tree.column("timestamp", width=150)
-        self.history_tree.column("student_name", width=140)
-        self.history_tree.column("predicted_g3", width=120)
-        self.history_tree.column("pass_probability", width=130)
+            self.history_tree.heading(col, text=HISTORY_COLUMN_HEADINGS[col], command=lambda column=col: self._sort_history_by(column))
+            self.history_tree.column(col, width=90, anchor="center")
+        self.history_tree.column("id", width=48)
+        self.history_tree.column("timestamp", width=132)
+        self.history_tree.column("student_name", width=116)
+        self.history_tree.column("matric_no", width=96)
+        self.history_tree.column("g1", width=54)
+        self.history_tree.column("g2", width=54)
+        self.history_tree.column("predicted_g3", width=96)
+        self.history_tree.column("prediction_result", width=72)
+        self.history_tree.column("pass_probability", width=112)
         self.history_tree.pack(fill="both", expand=True)
         self.history_tree.tag_configure("odd", background=COLORS["surface"])
         self.history_tree.tag_configure("even", background=COLORS["surface_alt"])
+        self._history_drag_anchor = None
+        self._history_drag_last = None
+        self.history_tree.bind("<ButtonPress-1>", self._begin_history_drag_select, add="+")
+        self.history_tree.bind("<B1-Motion>", self._update_history_drag_select)
+        self.history_tree.bind("<ButtonRelease-1>", self._end_history_drag_select, add="+")
         self.history_tree.bind("<Double-1>", lambda _event: self._view_history_detail())
+        self.history_result_filter_var.trace_add("write", lambda *_args: self._refresh_history())
 
     def _show_home(self):
         """Switch back to the home page.
@@ -693,7 +746,7 @@ class StudentPerformanceApp(tk.Tk):
         self.workspace_frame.pack(fill="both", expand=True)
         self._set_workspace_header(
             "History",
-            "Review saved prediction records, open record details, delete old entries, or export the history to CSV.",
+            "Review saved predictions, inspect details, delete records, or export history.",
             show_metrics=False,
         )
         self.input_panel.grid_remove()
@@ -886,34 +939,53 @@ class StudentPerformanceApp(tk.Tk):
             )
         self.key_factors_label.configure(text="\n\n".join(lines))
 
-    def _update_prediction_insights(self, prediction, pass_probability):
+    def _update_prediction_insights(self, _prediction, pass_probability):
         """Update the short support note below the prediction result.
 
         中文：这个提示不改变模型输出，只把通过概率解释成可行动的教学提醒。阈值分为
         高风险、中等风险和较稳定三档，是为了让教师快速判断是否需要额外关注。
 
         English: This note does not change the model output; it translates pass
-        probability into an actionable teaching reminder. Three thresholds separate
-        high risk, moderate risk, and stable performance for quick review.
+        probability into an actionable teaching reminder. Five probability bands
+        give more precise support guidance for quick review.
         """
-        if prediction == "Fail" or pass_probability < 0.5:
+        self.attention_label.configure(text=self._attention_message(pass_probability))
+
+    @staticmethod
+    def _attention_message(pass_probability):
+        """Return the Suggested Attention text for one pass-probability band."""
+        if pass_probability < 0.5:
             message = (
-                "Priority review is recommended because the estimated pass probability "
-                "is below 50%. Check recent grades, attendance, and learning progress."
+                "Immediate intervention is recommended because the estimated pass probability "
+                "is below 50%. Review recent grades, attendance, absences, and previous "
+                "failures, then arrange targeted academic support."
+            )
+        elif pass_probability < 0.6:
+            message = (
+                "High attention is recommended because the student is near the fail boundary. "
+                "Schedule a short follow-up, identify weak topics, and monitor the next "
+                "assessment or homework result closely."
             )
         elif pass_probability < 0.75:
             message = (
-                "Continue monitoring progress and reinforce weaker areas before the final "
-                "assessment. The student is likely to pass, but the margin is not strong."
+                "Moderate support is recommended. The student is likely to pass, but the "
+                "margin is still narrow, so reinforce weaker areas and keep regular progress "
+                "checks before the final assessment."
+            )
+        elif pass_probability < 0.9:
+            message = (
+                "Light monitoring is enough for now. Performance looks reasonably stable, "
+                "but continue routine checks and respond quickly if grades or attendance begin "
+                "to drop."
             )
         else:
             message = (
-                "Maintain the current learning pattern while continuing routine progress checks. "
-                "The estimated pass probability is strong, but support should remain consistent."
+                "Routine tracking is appropriate. The estimated pass probability is very "
+                "strong, so maintain the current learning pattern and normal check-ins."
             )
 
         message += "\n\nThis note is based on the predicted pass probability and should support, not replace, teacher judgment."
-        self.attention_label.configure(text=message)
+        return message
 
     def _save_record(self):
         """Save the latest successful prediction to history.
@@ -1126,7 +1198,7 @@ class StudentPerformanceApp(tk.Tk):
         return students
 
     @classmethod
-    def _read_batch_rows(cls, path):
+    def _read_batch_rows(cls, path, validate_headers=None):
         """Dispatch batch reading by file extension.
 
         中文：CSV 与 XLSX 的解析方式完全不同，所以先按扩展名分派到专门函数；不支持的
@@ -1137,14 +1209,15 @@ class StudentPerformanceApp(tk.Tk):
         message.
         """
         suffix = path.suffix.lower()
+        validate_headers = validate_headers or cls._validate_batch_headers
         if suffix == ".csv":
-            return cls._read_csv_batch_rows(path)
+            return cls._read_csv_batch_rows(path, validate_headers)
         if suffix == ".xlsx":
-            return cls._read_xlsx_batch_rows(path)
+            return cls._read_xlsx_batch_rows(path, validate_headers)
         raise ValueError("Only .csv and .xlsx files can be imported.")
 
     @classmethod
-    def _read_csv_batch_rows(cls, path):
+    def _read_csv_batch_rows(cls, path, validate_headers=None):
         """Read CSV data into numbered row dictionaries.
 
         中文：DictReader 使用第一行作为表头，数据行从第 2 行开始编号，与电子表格中用户
@@ -1156,7 +1229,7 @@ class StudentPerformanceApp(tk.Tk):
         """
         with path.open(newline="", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
-            cls._validate_batch_headers(reader.fieldnames or [])
+            (validate_headers or cls._validate_batch_headers)(reader.fieldnames or [])
             rows = []
             for row_number, row in enumerate(reader, start=2):
                 clean_row = {key: value for key, value in row.items() if key is not None}
@@ -1165,7 +1238,7 @@ class StudentPerformanceApp(tk.Tk):
             return rows
 
     @classmethod
-    def _read_xlsx_batch_rows(cls, path):
+    def _read_xlsx_batch_rows(cls, path, validate_headers=None):
         """Read the first worksheet of an XLSX file without external packages.
 
         中文：XLSX 本质上是 ZIP 包中的 XML 文件。这里用标准库 ZipFile 和 ElementTree
@@ -1203,7 +1276,7 @@ class StudentPerformanceApp(tk.Tk):
         _header_row_number, header_cells = raw_rows[0]
         max_column = max(header_cells)
         headers = [header_cells.get(index, "").strip() for index in range(1, max_column + 1)]
-        cls._validate_batch_headers(headers)
+        (validate_headers or cls._validate_batch_headers)(headers)
 
         rows = []
         for row_number, cells in raw_rows[1:]:
@@ -1463,22 +1536,163 @@ class StudentPerformanceApp(tk.Tk):
         """
         if not hasattr(self, "history_tree"):
             return
+        self._refresh_history_headings()
         for item in self.history_tree.get_children():
             self.history_tree.delete(item)
-        for index, row in enumerate(self.db.list_predictions()):
-            values = (
-                row["id"],
-                row["timestamp"],
-                row["student_name"],
-                row["matric_no"],
-                row["g1"],
-                row["g2"],
-                f"{row['predicted_g3']:.1f}",
-                row["prediction_result"],
-                f"{row['pass_probability']:.2%}",
-            )
+        all_rows = self.db.list_predictions()
+        rows = self._filter_history_rows(
+            all_rows,
+            search_text=self.history_search_var.get(),
+            result_filter=self.history_result_filter_var.get(),
+        )
+        rows = self._sort_history_rows(rows, self.history_sort_column, self.history_sort_reverse)
+        if hasattr(self, "history_count_label"):
+            self.history_count_label.configure(text=f"Showing {len(rows)} of {len(all_rows)} records")
+        for index, row in enumerate(rows):
             tag = "even" if index % 2 else "odd"
-            self.history_tree.insert("", "end", values=values, tags=(tag,))
+            self.history_tree.insert("", "end", values=self._history_row_values(row), tags=(tag,))
+
+    def _refresh_history_headings(self):
+        """Show the active History sort column in the table headings."""
+        if not hasattr(self, "history_tree"):
+            return
+        for column, label in HISTORY_COLUMN_HEADINGS.items():
+            suffix = ""
+            if column == self.history_sort_column:
+                suffix = " v" if self.history_sort_reverse else " ^"
+            self.history_tree.heading(column, text=f"{label}{suffix}", command=lambda col=column: self._sort_history_by(col))
+
+    def _sort_history_by(self, column):
+        """Toggle History sorting for one clicked column."""
+        if column == self.history_sort_column:
+            self.history_sort_reverse = not self.history_sort_reverse
+        else:
+            self.history_sort_column = column
+            self.history_sort_reverse = False
+        self._refresh_history()
+
+    def _clear_history_filters(self):
+        """Reset History filters and show all rows."""
+        self.history_search_var.set("")
+        self.history_result_filter_var.set(HISTORY_RESULT_FILTERS[0])
+        self._refresh_history()
+
+    @classmethod
+    def _filter_history_rows(cls, rows, search_text="", result_filter=None):
+        """Filter History rows using the visible search and drop-down values."""
+        search = str(search_text or "").strip().lower()
+        result_filter = result_filter or HISTORY_RESULT_FILTERS[0]
+
+        filtered = []
+        for row in rows:
+            if search and not cls._history_row_matches_search(row, search):
+                continue
+            if result_filter != HISTORY_RESULT_FILTERS[0] and row.get("prediction_result") != result_filter:
+                continue
+            filtered.append(row)
+        return filtered
+
+    @staticmethod
+    def _history_row_matches_search(row, search):
+        """Return whether the search text appears in common History fields."""
+        searchable_values = (
+            row.get("id"),
+            row.get("timestamp"),
+            row.get("student_name"),
+            row.get("matric_no"),
+            row.get("prediction_result"),
+        )
+        return any(search in str(value or "").lower() for value in searchable_values)
+
+    @classmethod
+    def _sort_history_rows(cls, rows, column, reverse=False):
+        """Sort History rows by a raw database column."""
+        rows = list(rows)
+        if column in HISTORY_NUMERIC_COLUMNS:
+            present = [row for row in rows if row.get(column) is not None]
+            missing = [row for row in rows if row.get(column) is None]
+            return sorted(present, key=lambda row: float(row.get(column)), reverse=reverse) + missing
+        return sorted(rows, key=lambda row: str(row.get(column, "") or "").lower(), reverse=reverse)
+
+    def _history_row_values(self, row):
+        """Format one History row for Treeview display."""
+        return (
+            row["id"],
+            row["timestamp"],
+            row["student_name"],
+            row["matric_no"],
+            row["g1"],
+            row["g2"],
+            f"{row['predicted_g3']:.1f}",
+            row["prediction_result"],
+            f"{row['pass_probability']:.2%}",
+        )
+
+    def _begin_history_drag_select(self, event):
+        """Remember the row where a left-button drag starts."""
+        if self.history_tree.identify_region(event.x, event.y) != "cell":
+            self._history_drag_anchor = None
+            self._history_drag_last = None
+            return
+
+        item = self.history_tree.identify_row(event.y)
+        self._history_drag_anchor = item or None
+        self._history_drag_last = item or None
+
+    def _update_history_drag_select(self, event):
+        """Select all History rows between the drag start and current pointer row."""
+        if not self._history_drag_anchor:
+            return
+
+        current = self._history_drag_item_at(event.y)
+        if not current:
+            return "break"
+
+        children = list(self.history_tree.get_children(""))
+        if self._history_drag_anchor not in children or current not in children:
+            return "break"
+
+        anchor_index = children.index(self._history_drag_anchor)
+        current_index = children.index(current)
+        start, end = sorted((anchor_index, current_index))
+        self.history_tree.selection_set(children[start : end + 1])
+        self.history_tree.focus(current)
+        self.history_tree.see(current)
+        self._history_drag_last = current
+        return "break"
+
+    def _end_history_drag_select(self, _event):
+        """Clear temporary drag-selection state after the mouse button is released."""
+        self._history_drag_anchor = None
+        self._history_drag_last = None
+
+    def _history_drag_item_at(self, y_position):
+        """Return the row under the pointer, scrolling gently near the table edges."""
+        height = max(self.history_tree.winfo_height(), 1)
+        edge_margin = 24
+        if y_position < edge_margin:
+            self.history_tree.yview_scroll(-1, "units")
+        elif y_position > height - edge_margin:
+            self.history_tree.yview_scroll(1, "units")
+
+        bounded_y = min(max(y_position, 0), height - 1)
+        item = self.history_tree.identify_row(bounded_y)
+        if item:
+            return item
+
+        visible_items = [item for item in self.history_tree.get_children("") if self.history_tree.bbox(item)]
+        if not visible_items:
+            return None
+        return visible_items[0] if y_position < height / 2 else visible_items[-1]
+
+    def _select_all_history(self):
+        """Select every visible History row."""
+        if not hasattr(self, "history_tree"):
+            return
+        items = self.history_tree.get_children("")
+        if items:
+            self.history_tree.selection_set(items)
+            self.history_tree.focus(items[0])
 
     def _delete_selected_history_single_legacy(self):
         """Legacy single-row deletion flow kept for compatibility.

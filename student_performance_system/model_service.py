@@ -14,7 +14,13 @@ import math
 import random
 from collections import Counter
 
-from .data_utils import DISPLAY_FEATURES, FEATURES, STUDY_TIME_COLUMN, TARGET_CLASSES, load_dataset
+from .data_utils import (
+    DISPLAY_FEATURES,
+    FEATURES,
+    STUDY_TIME_COLUMN,
+    TARGET_CLASSES,
+    load_dataset,
+)
 from .random_forest import DecisionTreeClassifier, RandomForestClassifier, RandomForestRegressor
 
 
@@ -65,8 +71,8 @@ class PredictionService:
         reproducible for debugging and documentation.
         """
         x_rows, y, raw_rows = load_dataset(self.dataset_path)
-        x_rows = [self._encode_row(row) for row in x_rows]
         g3_scores = [float(row["G3"]) for row in raw_rows]
+        x_rows = [self._encode_row(row) for row in x_rows]
         self.reference_values = self._reference_values(x_rows)
 
         # 中文：固定随机种子，使训练/测试划分在每次运行时一致。

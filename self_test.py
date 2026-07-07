@@ -149,6 +149,15 @@ def main():
         assert isinstance(factor["abs_impact"], float)
         assert isinstance(factor["importance"], float)
         assert factor["message"]
+    attention_cases = [
+        (0.49, "below 50%"),
+        (0.55, "near the fail boundary"),
+        (0.70, "margin is still narrow"),
+        (0.85, "reasonably stable"),
+        (0.95, "very strong"),
+    ]
+    for probability, expected_text in attention_cases:
+        assert expected_text in StudentPerformanceApp._attention_message(probability)
     with TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         # 中文：所有数据库和导入文件都放在临时目录，保证测试不会污染用户真实数据。
         # English: Databases and import files live in a temp directory so real user data is untouched.
@@ -177,6 +186,8 @@ def main():
             sheet_xml = workbook.read("xl/worksheets/sheet1.xml").decode("utf-8")
             styles_xml = workbook.read("xl/styles.xml").decode("utf-8")
         assert "Predicted G3" in sheet_xml
+        assert "Actual G3" not in sheet_xml
+        assert "Training Status" not in sheet_xml
         assert 's="2"' in sheet_xml or 's="3"' in sheet_xml
         assert "FFD9EAD3" in styles_xml
         assert "FFF4CCCC" in styles_xml
@@ -261,6 +272,17 @@ def main():
                 imported_result["predicted_g3"],
             )
         assert [row["student_name"] for row in db.list_predictions()][-2:] == ["CSV Student", "XLSX Student"]
+
+        history_rows = db.list_predictions()
+        search_rows = StudentPerformanceApp._filter_history_rows(history_rows, search_text="X001")
+        assert [row["student_name"] for row in search_rows] == ["XLSX Student"]
+        csv_result = db.get_prediction(3)["prediction_result"]
+        result_rows = StudentPerformanceApp._filter_history_rows(history_rows, result_filter=csv_result)
+        assert all(row["prediction_result"] == csv_result for row in result_rows)
+        sorted_by_g3 = StudentPerformanceApp._sort_history_rows(history_rows, "predicted_g3", reverse=True)
+        assert sorted_by_g3[0]["predicted_g3"] >= sorted_by_g3[-1]["predicted_g3"]
+        sorted_by_probability = StudentPerformanceApp._sort_history_rows(history_rows, "pass_probability", reverse=True)
+        assert sorted_by_probability[0]["pass_probability"] >= sorted_by_probability[-1]["pass_probability"]
 
         invalid_path = Path(tmp) / "invalid_batch.csv"
         invalid_path.write_text(
